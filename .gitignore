@@ -1,0 +1,19 @@
+# ---- Python ----
+__pycache__/
+*.pyc
+*.pyo
+
+# ---- PAdif 运行时数据（用户文章的版本库，属个人内容，不入代码库）----
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+# 保留 data 目录结构
+!data/.gitkeep
+
+# ---- 编辑器 / 系统 ----
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

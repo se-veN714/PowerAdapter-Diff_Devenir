@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PAdif · 文章版本监管</title>
+  <!-- htmx：优先本地，缺失则走 CDN -->
+  <script src="/web/htmx.min.js"></script>
+  <script>window.htmx || document.write('<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"><\/script>');</script>
+  <script src="/web/app.js"></script>
+  <script src="/web/diffview.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+           background:#0f1115; color:#e6e6e6; }
+    header { padding:14px 20px; border-bottom:1px solid #222; display:flex; align-items:baseline; gap:12px; }
+    header h1 { font-size:18px; margin:0; }
+    header .sub { color:#888; font-size:13px; }
+    .layout { display:grid; grid-template-columns: 280px 1fr; gap:0; min-height: calc(100vh - 53px); }
+    .col-left { border-right:1px solid #222; padding:16px; }
+    .col-right { padding:16px 22px; }
+    .muted { color:#888; font-size:13px; }
+    .tag { background:#26324a; color:#9ec5ff; border-radius:4px; padding:1px 6px; font-size:12px; }
+    ul.art-list, ul.ver-list { list-style:none; padding:0; margin:8px 0; }
+    ul.art-list li, ul.ver-list li { padding:6px 8px; border-radius:6px; }
+    ul.art-list li:hover { background:#1a1f29; }
+    ul.art-list a { color:#e6e6e6; text-decoration:none; display:flex; justify-content:space-between; gap:8px; }
+    .import-box { margin-bottom:18px; }
+    .import-box input { width:100%; padding:8px; background:#161a22; border:1px solid #2a2f3a;
+                       color:#e6e6e6; border-radius:6px; }
+    button { background:#2b6cff; color:#fff; border:0; padding:8px 14px; border-radius:6px; cursor:pointer; }
+    button:hover { background:#1f5bef; }
+    .diff-controls { display:flex; gap:10px; align-items:center; margin:14px 0; flex-wrap:wrap; }
+    select { background:#161a22; color:#e6e6e6; border:1px solid #2a2f3a; padding:6px; border-radius:6px; }
+    .stats { color:#9ec5ff; font-size:13px; margin:6px 0; }
+    .diff-view { margin-top:14px; line-height:1.9; font-size:15px; white-space:pre-wrap; }
+    .diff-body .ins { background:rgba(46,160,67,.28); color:#7ee2a8; border-radius:3px; }
+    .diff-body .del { background:rgba(248,81,73,.25); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
+    .diff-body .rep { border-bottom:2px dashed #f0a500; }
+    .diff-body .eq { color:#cfd3da; }
+    .commit-form { margin-top:18px; border-top:1px solid #222; padding-top:14px; }
+    .commit-form textarea { width:100%; min-height:160px; background:#161a22; border:1px solid #2a2f3a;
+                            color:#e6e6e6; border-radius:6px; padding:10px; font-family:inherit; }
+    .commit-form input[type=text] { width:100%; padding:8px; background:#161a22; border:1px solid #2a2f3a;
+                            color:#e6e6e6; border-radius:6px; margin:6px 0; }
+    .row { display:flex; gap:10px; align-items:center; margin:6px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PAdif</h1>
+    <span class="sub">轻量化文章版本监管 · 句子级差异</span>
+  </header>
+
+  <div class="layout">
+    <div class="col-left">
+      <div class="import-box">
+        <label class="muted">导入 Markdown 文件</label>
+        <input id="md-path" type="text" placeholder="例如 D:/notes/essay.md" />
+        <div class="row" style="margin-top:8px;">
+          <button onclick="importMd()">导入</button>
+        </div>
+      </div>
+      <h3 style="font-size:14px;color:#aaa;">文章</h3>
+      <div id="articles" hx-get="/frag/articles" hx-trigger="load" hx-swap="innerHTML"></div>
+    </div>
+
+    <div class="col-right">
+      <h3 style="font-size:14px;color:#aaa;">版本与差异</h3>
+      <div id="versions"><p class="muted">从左侧选择一篇文章。</p></div>
+
+      <div class="commit-form" id="commit-form" style="display:none;">
+        <h3 style="font-size:14px;color:#aaa;">提交新版本</h3>
+        <textarea id="new-content" placeholder="粘贴/编辑文章全文…"></textarea>
+        <input id="commit-msg" type="text" placeholder="commit message（必填，说明这次改了什么）" />
+        <div class="row">
+          <label class="muted">级别</label>
+          <select id="commit-kind">
+            <option value="patch">patch · 措辞润色</option>
+            <option value="minor">minor · 成段增删</option>
+            <option value="major">major · 结构大改</option>
+          </select>
+          <button id="commit-btn" onclick="commitVersion()">提交版本</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
