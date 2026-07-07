@@ -5,7 +5,7 @@
 > **依赖**: Python 3.12 · 标准库 http.server · difflib · htmx · SQLite  
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
-> **更新**: 2026-07-07 — 初始化开发者文档，定义架构、数据模型、API 与编码约束
+> **更新**: 2026-07-07 — v0.2：MVP 全链路实现（导入→提交→对比）；端口 8000→18887（支持 `PADIF_PORT`）；新增 T7 前端优化任务；git 初始化
 
 ---
 
@@ -14,6 +14,7 @@
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | v0.1 | 2026-07-07 | 初始化 `DEVELOPMENT.md`：架构图、目录映射、数据模型 ER 图、核心流程时序图、API 列表、编码规范与开发约束 |
+| v0.2 | 2026-07-07 | 同步 MVP 落地状态：后端修正为「标准库 http.server」、补全实际函数名与 `/frag/*` 端点、端口 18887（支持 `PADIF_PORT`）、新增句子移动噪声与 T7 已知项、填充运行 / DB / git 附录 |
 
 ---
 
@@ -59,14 +60,14 @@ flowchart TD
 
 | 文件 | 类型 | 职责 | 关键函数/类 |
 |------|------|------|-------------|
-| `server/app.py` | 模块 | FastAPI 应用与路由编排 | `import_article()`, `list_versions()`, `commit_version()`, `compare_versions()` |
+| `server/app.py` | 模块 | 标准库 http.server 应用与路由编排（/api JSON + /frag htmx 片段 + 静态） | `import_markdown()`, `commit_version()`, `frag_articles()`, `frag_versions()`, `frag_diff()` |
 | `server/differ.py` | 模块 | 句子级 diff 引擎 | `segment(text)`, `diff_sentences(a, b)`, `build_stats()` |
 | `server/version.py` | 模块 | 语义版本标注引导 | `bump(prev, kind)`, `suggest_kind(diff_stats)`, `gentle_warn(content_a, content_b)` |
 | `server/store.py` | 模块 | SQLite 读写入口 | `init_db()`, `save_article()`, `save_version()`, `get_versions()`, `get_version()` |
 | `web/index.html` | 模板 | 单页骨架 + htmx 挂载点 | — |
-| `web/app.js` | 脚本 | htmx 配置与局部交互 | — |
-| `web/diffview.js` | 脚本 | diff 高亮渲染 | `renderDiff(op)` |
-| `data/padif.db` | 数据 | SQLite 版本库 | — |
+| `web/app.js` | 脚本 | 前端交互（import/commit 用 fetch，列表/diff 用 htmx 片段委托） | `importMd()`, `selectArticle()`, `commitVersion()`, `loadArticles()` |
+| `web/diffview.js` | 脚本 | diff 片段加载后客户端增强（`.rep` 提示、复制纯文本） | `copyDiffPlain()` |
+| `data/padif.db` | 数据 | SQLite 版本库（运行期生成，已被 `.gitignore` 忽略） | — |
 | `GUIDE-PAdif.md` | 文档 | 需求上下文与设计指南 | — |
 | `DEVELOPMENT.md` | 文档 | 本开发者文档 | — |
 
@@ -169,8 +170,11 @@ sequenceDiagram
 | GET | `/api/articles/{id}/versions` | 某文章版本列表 | — | `[{ version, version_kind, commit_message, created_at }]` |
 | POST | `/api/articles/{id}/versions` | 提交新版本 | `{ content, commit_message, version_kind }` | `{ version, diff_stats }` |
 | GET | `/api/articles/{id}/diff` | 对比两版 | `?from=&to=` | `{ ops: [...] }` |
+| GET | `/frag/articles` | 文章列表 HTML 片段（htmx） | — | HTML |
+| GET | `/frag/articles/{id}/versions` | 版本列表 + 对比控件 HTML 片段 | — | HTML |
+| GET | `/frag/articles/{id}/diff` | 差异高亮 HTML 片段（支持 `?mode=inline\|split`） | `?from=&to=&mode=` | HTML |
 
-> 版本号由 `version.py` 依据 `version_kind` 自动递增；`commit_message` 必填非空，但不强制长度/格式。
+> 版本号由 `version.py` 依据 `version_kind` 自动递增；`commit_message` 必填非空，但不强制长度/格式。`/frag/*` 由 htmx 直接消费，服务端渲染高亮。
 
 ---
 
@@ -223,8 +227,10 @@ flowchart LR
 
 | 严重度 | 项 | 说明 |
 |--------|----|------|
+| 🟡 中 | 句子移动噪声 | 段落重排时会产生较大 `replace` 噪声；待 Phase 2 引入句子移动检测（与上一版比对已存在句） |
 | 🟡 中 | 自动检测变更 | 监听文件自动提交（Phase 3）尚未实现 |
 | 🟡 中 | 并排双栏 / 统计摘要 | 增强可读性功能（Phase 2）待实现 |
+| 🟢 低 | 前端优化（T7） | 样式 / 交互 / 响应式 / 无障碍，留待收尾统一处理 |
 | 🟢 低 | Obsidian 插件形态 | Phase 4，复用存储与引擎 |
 | 🟢 低 | 多文章批量导入 | 当前仅单文件导入 |
 
@@ -232,15 +238,20 @@ flowchart LR
 
 ## 9. 附录
 
-### 9.1 本地运行（MVP 起服务后补充）
+### 9.1 本地运行
 ```bash
-# 待 Phase 1 实现后填充，示例：
-# python -m uvicorn server.app:app --reload
+cd padif
+python server/app.py                      # 默认监听 127.0.0.1:18887
+PADIF_PORT=8000 python server/app.py     # 可用环境变量覆盖端口
 ```
+浏览器打开 http://127.0.0.1:18887/ 即可使用。
 
 ### 9.2 数据库初始化
-```bash
-# 待 store.init_db() 实现后填充
-```
+`store.init_db()` 在 `app.py` 启动时自动调用，首次运行即建好 `Article` / `Version` 表。
+数据文件 `data/padif.db` 运行期生成，**已被 `.gitignore` 忽略**，不入库。
+
+### 9.3 版本管理（git）
+仓库位于 `padif/`，首个提交为 MVP 全量实现（commit `be90847`）。
+`.gitignore` 忽略 `__pycache__/`、`data/*.db` 等运行期产物，保留 `data/.gitkeep`。
 
 > 本文档随模块演进而更新；任何架构/接口变更须同步修改对应 Mermaid 图与版本记录。

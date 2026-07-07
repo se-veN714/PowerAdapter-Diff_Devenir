@@ -79,7 +79,7 @@
 padif/
 ├── GUIDE-PAdif.md          # 本文档
 ├── server/                 # 本地后端（读取 .md、存版本、做 diff）
-│   ├── app.py              # 轻量 Web 服务（推荐 FastAPI / Flask）
+│   ├── app.py              # 轻量 Web 服务（标准库 http.server，原计划 FastAPI）
 │   ├── store.py            # 版本存储（SQLite 或 JSON）
 │   ├── differ.py           # 句子级 diff 引擎（基于 difflib + 自定义分段）
 │   └── version.py          # 语义版本（major.minor.patch）标注与自动递增引导
@@ -99,7 +99,7 @@ padif/
 
 ### 4.2 技术选型（已确认）
 
-- **后端**：Python 3.12（已具备 managed runtime）。`FastAPI` + `difflib`。
+- **后端**：Python 3.12（已具备 managed runtime）。标准库 `http.server` + `difflib`（原计划 FastAPI，因 managed Python 环境无法装第三方包改用标准库，详见 `DEVELOPMENT.md` 头部「环境限制」与 §4.2 实现偏差说明）。
 - **前端 ↔ 后端耦合**：**htmx**（用户确认，替代 Alpine.js）。HTML 片段由后端模板渲染，htmx 负责无刷新交互，避免重构建链、保持轻量。
 - **存储**：**SQLite（已确认）**。
 
@@ -126,7 +126,7 @@ padif/
 
 ## 6. 下一步（技术栈已确认，进入任务权重规划）
 
-技术选型已锁定：**FastAPI + difflib + htmx + SQLite**，MVP 优先、按需增栈。
+技术选型已锁定：**标准库 http.server + difflib + htmx + SQLite**（原计划 FastAPI，因 managed Python 环境无法装第三方包改用标准库，后续可平滑迁回 FastAPI），MVP 优先、按需增栈。
 详见 `DEVELOPMENT.md`（开发者文档，含编码约束与项目导读）。
 
 ---
