@@ -5,7 +5,7 @@
 > **依赖**: Python 3.12 · 标准库 http.server · difflib · htmx · SQLite  
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
-> **更新**: 2026-07-07 — v0.5：Phase 2 统计摘要视图（diff 片段支持 `?mode=stats`）；新增 `differ.summarize()` 绝对指标
+> **更新**: 2026-07-07 — v0.6：修复「查看差异」无响应（innerHTML 注入后须 `htmx.process` 重新绑定）；新增同版本对比提示
 
 ---
 
@@ -18,6 +18,7 @@
 | v0.3 | 2026-07-07 | 实现并排双栏差异视图：`frag_diff` 支持 `?mode=split`，新增 `_render_split`（左栏删红、右栏增绿）；`frag_versions` 加行内/并排切换；`index.html` 补双栏样式 |
 | v0.4 | 2026-07-07 | 新增 Diff 粒度策略（散文句子级 / 类代码行级 / 结构化健壮性优先）与测试集约定；CONTEXT.md 调整为本地非跟踪参考 |
 | v0.5 | 2026-07-07 | Phase 2 统计摘要视图：`frag_diff` 支持 `?mode=stats`，新增 `_render_stats` + `differ.summarize()`（字数/句数/段数/行数 + 变化量）；`frag_versions` 加「统计」切换；`index.html` 补表格样式 |
+| v0.6 | 2026-07-07 | 修复「查看差异」按钮无响应：`app.js` 用 `innerHTML` 注入片段后浏览器不会自动重扫 htmx，须显式 `htmx.process(node)`；文章链接改 `onclick` 直连；`frag_diff` 增加同版本对比提示 |
 
 ---
 
@@ -249,10 +250,11 @@ flowchart LR
 | 🟡 中 | 自动检测变更 | 监听文件自动提交（Phase 3）尚未实现 |
 | 🟢 低 | 并排双栏 | 已实现（diff 片段支持 `?mode=split`，左删红 / 右增绿） |
 | 🟢 低 | 统计摘要 | 已实现（`?mode=stats`：字数/句数/段数/行数 + 变化量对比表） |
-| 🟡 中 | 统计摘要增强 | 当前仅有基础增删统计，待更丰富的概览（Phase 2） |
+| 🟢 低 | 统计摘要增强 | 基础概览已落地（字数/句数/段数/行数 + 变化量），后续可加更丰富维度 |
 | 🟢 低 | 前端优化（T7） | 样式 / 交互 / 响应式 / 无障碍，留待收尾统一处理 |
 | 🟢 低 | Obsidian 插件形态 | Phase 4，复用存储与引擎 |
 | 🟢 低 | 多文章批量导入 | 当前仅单文件导入 |
+| 🟡 中 | 动态 htmx 绑定 | 通过 `innerHTML` 注入的片段（如版本列表）须在其后调用 `htmx.process(node)`，否则片段内 `hx-*` 不生效（v0.6 已修复） |
 
 ---
 

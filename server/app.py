@@ -116,8 +116,7 @@ def frag_articles() -> str:
     if not arts:
         return '<p class="muted">暂无文章。先在下方导入一个 .md 文件。</p>'
     items = "".join(
-        f'<li><a href="#" hx-get="/frag/articles/{a["id"]}/versions" '
-        f'hx-target="#versions" hx-swap="innerHTML">'
+        f'<li><a href="#" onclick="selectArticle({a["id"]})">'
         f'{_esc(a["title"])} <span class="tag">{_esc(a["current_version"] or "—")}</span></a></li>'
         for a in arts
     )
@@ -157,6 +156,8 @@ def frag_versions(article_id: int) -> str:
 
 
 def frag_diff(article_id: int, from_id: str, to_id: str, mode: str = "inline") -> str:
+    if from_id and to_id and int(from_id) == int(to_id):
+        return '<p class="muted">请选择两个不同的版本进行对比。</p>'
     a = store.get_version(int(from_id)) if from_id else None
     b = store.get_version(int(to_id)) if to_id else None
     if not a or not b:

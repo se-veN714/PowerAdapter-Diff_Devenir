@@ -1,4 +1,6 @@
-/* PAdif 前端交互（JS 驱动 import / commit，htmx 驱动列表与 diff 片段） */
+/* PAdif 前端交互：article / version / diff 均以 fetch 消费后端 /frag/* HTML 片段。
+   关键：用 innerHTML 注入片段后，浏览器不会自动让 htmx 重新扫描，
+   必须显式调用 htmx.process(node) 才能让片段内的 hx-* 生效（如「查看差异」按钮）。 */
 
 let currentAid = null;
 
@@ -23,7 +25,10 @@ async function importMd() {
 async function selectArticle(aid) {
   currentAid = aid;
   const res = await fetch(`/frag/articles/${aid}/versions`);
-  document.getElementById("versions").innerHTML = await res.text();
+  const box = document.getElementById("versions");
+  box.innerHTML = await res.text();
+  // 让新注入片段里的 hx-*（查看差异按钮）被 htmx 绑定
+  if (window.htmx && htmx.process) htmx.process(box);
   document.getElementById("commit-form").style.display = "block";
 }
 
@@ -43,19 +48,14 @@ async function commitVersion() {
   if (data.gentle_warn) {
     if (!confirm("提示：这一版与上一版似乎只有标点/空格差异，仍要提交吗？")) return;
   }
-  // 刷新版本列表与 diff
+  // 刷新版本列表与 diff 控件，并重新绑定 htmx
   const r2 = await fetch(`/frag/articles/${currentAid}/versions`);
-  document.getElementById("versions").innerHTML = await r2.text();
+  const box = document.getElementById("versions");
+  box.innerHTML = await r2.text();
+  if (window.htmx && htmx.process) htmx.process(box);
   document.getElementById("new-content").value = "";
   document.getElementById("commit-msg").value = "";
 }
 
-// 文章列表点击委托
-document.addEventListener("click", (e) => {
-  const a = e.target.closest('a[hx-get^="/frag/articles/"]');
-  if (a) {
-    e.preventDefault();
-    const m = a.getAttribute("hx-get").match(/\/frag\/articles\/(\d+)\/versions/);
-    if (m) selectArticle(parseInt(m[1], 10));
-  }
-});
+// 页面加载即拉取文章列表
+document.addEventListener("DOMContentLoaded", loadArticles);
