@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import List
@@ -63,9 +64,10 @@ def _flush(buf: List[str], out: List[str]) -> None:
 class DiffOp:
     """一个 diff 操作。
 
-    op: equal | insert | delete | replace
+    op: equal | insert | delete | replace | moved
     - equal/insert/delete 的 text 为整句（或句内片段）
     - replace 的 inner 为句内字符级 diff（list[DiffOp]），text 为原句整体
+    - moved 表示「内容与另一版本某句完全相同，但位置发生了移动」（句子移动检测）
     """
 
     op: str
@@ -90,47 +92,120 @@ def _char_diff(a: str, b: str) -> List[DiffOp]:
     return out
 
 
-def diff_sentences(a: str, b: str) -> List[DiffOp]:
-    """对比两个版本的正文，返回句子级操作序列。
+def _similar(x: str, y: str) -> float:
+    """两句的字符级相似度（0~1），用于判断是否值得做句内字符级高亮。"""
+    return SequenceMatcher(None, x, y).ratio()
 
-    替换（replace）类操作会额外携带 inner（句内字符级 diff）以便前端高亮。
+
+def _align_blocks(del_list: List[str], ins_list: List[str],
+                  del_skip: dict, ins_emit: dict) -> List[DiffOp]:
+    """对齐 replace 块内的删/插句序列，复用全局移动预算（del_skip / ins_emit）。
+
+    - 同文移动：插入侧渲染为 moved，删除侧抑制（避免同一句出现两次）；
+    - 剩余句若长度相等且足够相似 → replace（句内字符级 diff，保留「行走→奔跑」级高亮）；
+    - 若长度不等或相似度过低 → 退化为纯 delete / insert，避免把不相关句子做字符级误配。
+    """
+    out: List[DiffOp] = []
+    # 插入侧：移动句渲染为 moved，其余留待对齐
+    new_dj: List[str] = []
+    for s in ins_list:
+        if ins_emit.get(s, 0) > 0:
+            ins_emit[s] -= 1
+            out.append(DiffOp("moved", s))
+        else:
+            new_dj.append(s)
+    # 删除侧：移动句抑制（不渲染），其余留待对齐
+    new_di: List[str] = []
+    for s in del_list:
+        if del_skip.get(s, 0) > 0:
+            del_skip[s] -= 1  # 移动句的旧位置不渲染，交给插入侧
+        else:
+            new_di.append(s)
+    # 剩余做 1:1 对齐
+    if len(new_di) == len(new_dj):
+        for so, sn in zip(new_di, new_dj):
+            if so == sn:
+                out.append(DiffOp("moved", so))
+            elif _similar(so, sn) >= 0.5:
+                out.append(DiffOp("replace", so, _char_diff(so, sn)))
+            else:
+                out.append(DiffOp("delete", so))
+                out.append(DiffOp("insert", sn))
+    else:
+        for s in new_di:
+            out.append(DiffOp("delete", s))
+        for s in new_dj:
+            out.append(DiffOp("insert", s))
+    return out
+
+
+def diff_sentences(a: str, b: str) -> List[DiffOp]:
+    """对比两个版本的正文，返回句子级操作序列（含移动检测）。
+
+    - 替换（replace）类操作会额外携带 inner（句内字符级 diff）以便前端高亮。
+    - 移动（moved）类操作表示「内容与另一版本某句完全相同、仅位置变化」：
+      用于把段落重排产生的 del+ins 噪声收敛为中性提示，而非红绿噪声。
+      判定方式：① 全局配对——删/插两端出现同文句互相配对为 moved（删除侧抑制、插入侧渲染）；
+                ② 位置偏移——equal 块内句若绝对位置改变也判为 moved。
     """
     sa, sb = segment(a), segment(b)
     sm = SequenceMatcher(None, sa, sb, autojunk=False)
+    # 第一遍：收集所有删 / 插句文本（含 replace 块），做全局「移动」配对
+    del_pool, ins_pool = [], []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "delete":
+            del_pool.extend(sa[i1:i2])
+        elif tag == "insert":
+            ins_pool.extend(sb[j1:j2])
+        elif tag == "replace":
+            del_pool.extend(sa[i1:i2])
+            ins_pool.extend(sb[j1:j2])
+    move_count = {
+        t: min(del_pool.count(t), ins_pool.count(t))
+        for t in set(del_pool) | set(ins_pool)
+    }
+    # 删除侧的移动副本抑制（不渲染，避免内联视图里同一句出现两次）；
+    # 插入侧的移动副本保留（在新位置以中性色展示）。两者独立计数，各消耗 move_count[t] 次。
+    del_skip, ins_emit = dict(move_count), dict(move_count)
+
     ops: List[DiffOp] = []
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag == "equal":
-            for s in sa[i1:i2]:
-                ops.append(DiffOp("equal", s))
+            for k, s in enumerate(sa[i1:i2]):
+                # 相同内容但绝对位置变化 → 移动
+                if i1 + k != j1 + k:
+                    ops.append(DiffOp("moved", s))
+                else:
+                    ops.append(DiffOp("equal", s))
         elif tag == "delete":
             for s in sa[i1:i2]:
+                if del_skip.get(s, 0) > 0:
+                    del_skip[s] -= 1
+                    continue
                 ops.append(DiffOp("delete", s))
         elif tag == "insert":
             for s in sb[j1:j2]:
-                ops.append(DiffOp("insert", s))
+                if ins_emit.get(s, 0) > 0:
+                    ins_emit[s] -= 1
+                    ops.append(DiffOp("moved", s))
+                else:
+                    ops.append(DiffOp("insert", s))
         elif tag == "replace":
-            # 整句替换：句级标红/标绿，同时给出句内字符级对齐
-            for s_old in sa[i1:i2]:
-                for s_new in sb[j1:j2]:
-                    ops.append(DiffOp("replace", s_old, _char_diff(s_old, s_new)))
+            ops.extend(_align_blocks(sa[i1:i2], sb[j1:j2], del_skip, ins_emit))
     return ops
 
 
 def build_stats(a: str, b: str) -> dict:
-    """统计两版间的增删规模，供版本记录与统计摘要使用。"""
+    """统计两版间的增删规模，供版本记录与统计摘要使用。
+
+    基于移动感知的 diff：moved 不计入增删（重排不再虚增句数变化）。
+    """
     sa, sb = segment(a), segment(b)
     chars_added = sum(len(s) for s in sb)
     chars_removed = sum(len(s) for s in sa)
-    sm = SequenceMatcher(None, sa, sb, autojunk=False)
-    sentences_added = sentences_removed = 0
-    for tag, i1, i2, j1, j2 in sm.get_opcodes():
-        if tag == "insert":
-            sentences_added += j2 - j1
-        elif tag == "delete":
-            sentences_removed += i2 - i1
-        elif tag == "replace":
-            sentences_removed += i2 - i1
-            sentences_added += j2 - j1
+    ops = diff_sentences(a, b)
+    sentences_added = sum(1 for o in ops if o.op == "insert")
+    sentences_removed = sum(1 for o in ops if o.op == "delete")
     return {
         "chars_added": chars_added,
         "chars_removed": chars_removed,

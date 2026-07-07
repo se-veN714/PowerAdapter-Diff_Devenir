@@ -154,6 +154,12 @@ def frag_versions(article_id: int) -> str:
       <button hx-get="/frag/articles/{article_id}/diff"
               hx-include="#from,#to,#diff-mode" hx-target="#diff" hx-swap="innerHTML">查看差异</button>
     </div>
+    <p class="legend">
+      <span class="sw sw-ins">新增</span>
+      <span class="sw sw-del">删除</span>
+      <span class="sw sw-mv">移动（仅位置变化）</span>
+      <span class="sw sw-eq">未变</span>
+    </p>
     <ul class="ver-list">{rows}</ul>
     <div id="diff" class="diff-view"></div>
     """
@@ -184,6 +190,8 @@ def frag_diff(article_id: int, from_id: str, to_id: str, mode: str = "inline") -
             parts.append(f'<span class="ins">{_esc(o.text)}</span>')
         elif o.op == "delete":
             parts.append(f'<span class="del">{_esc(o.text)}</span>')
+        elif o.op == "moved":
+            parts.append(f'<span class="mv" title="该句在另一版本中存在，仅位置移动">{_esc(o.text)}</span>')
         elif o.op == "replace":
             inner = "".join(
                 f'<span class="{ "ins" if x.op=="insert" else "del" if x.op=="delete" else "eq"}">{_esc(x.text)}</span>'
@@ -205,6 +213,9 @@ def _render_split(ops, ver_a: str, ver_b: str) -> str:
         elif o.op == "insert":
             left.append('<span class="ph">　</span>')
             right.append(f'<span class="ins">{_esc(o.text)}</span>')
+        elif o.op == "moved":
+            left.append(f'<span class="mv" title="该句在另一版本中存在，仅位置移动">{_esc(o.text)}</span>')
+            right.append(f'<span class="mv" title="该句在另一版本中存在，仅位置移动">{_esc(o.text)}</span>')
         elif o.op == "replace":
             linner = "".join(
                 f'<span class="{"del" if x.op=="delete" else "eq"}">{_esc(x.text)}</span>'

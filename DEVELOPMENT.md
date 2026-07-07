@@ -5,7 +5,7 @@
 > **依赖**: Python 3.12 · 标准库 http.server · difflib · htmx · SQLite  
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
-> **更新**: 2026-07-07 — v0.7：修复不同版本也误报「请选择两个版本」（`hx-include` 的 select 缺 `name` 属性）+ 默认 from=首 / to=末
+> **更新**: 2026-07-07 — v0.8：Phase 2 完成——句子移动检测降噪（段落重排不再产生红/绿噪声）
 
 ---
 
@@ -19,6 +19,8 @@
 | v0.4 | 2026-07-07 | 新增 Diff 粒度策略（散文句子级 / 类代码行级 / 结构化健壮性优先）与测试集约定；CONTEXT.md 调整为本地非跟踪参考 |
 | v0.5 | 2026-07-07 | Phase 2 统计摘要视图：`frag_diff` 支持 `?mode=stats`，新增 `_render_stats` + `differ.summarize()`（字数/句数/段数/行数 + 变化量）；`frag_versions` 加「统计」切换；`index.html` 补表格样式 |
 | v0.6 | 2026-07-07 | 修复「查看差异」按钮无响应：`app.js` 用 `innerHTML` 注入片段后浏览器不会自动重扫 htmx，须显式 `htmx.process(node)`；文章链接改 `onclick` 直连；`frag_diff` 增加同版本对比提示 |
+| v0.7 | 2026-07-07 | 修复不同版本也误报「请选择两个版本」：`hx-include` 的 `<select>` 缺 `name` 属性导致 `from/to` 参数空发；并默认 `#from` 选最早、`#to` 选最新版本 |
+| v0.8 | 2026-07-07 | Phase 2 收官——句子移动检测降噪：`differ` 新增 `moved` 操作（内容相同仅位置变化），全局配对 + 位置偏移判定；重排段落不再产生红/绿噪声；相似度 <0.5 退化为纯增删以防误配字符级高亮 |
 
 ---
 
@@ -202,6 +204,7 @@ sequenceDiagram
 ### 6.4 diff 引擎约束
 - 分段单位：句末 `。！？.!?` 与空行 `\n\n`；句中 `，；、,;:` 作次级对齐。**散文正文禁止按行 diff**（句级才是 PAdif 的主价值）。
 - 输出须含 `diff_stats`：`chars_added / chars_removed / sentences_added / sentences_removed`。
+- 操作类型：`equal` / `insert` / `delete` / `replace`（句内字符级高亮，见 `inner`）/ `moved`（内容相同、仅位置变化 → 中性渲染，不计增删）。`diff_sentences()` 负责移动检测：全局同文配对（删除侧抑制、插入侧渲染）+ equal 块位置偏移判定；`replace` 块内相似度 <0.5 退化为纯增删以防误配。
 - 注：此约束**仅针对散文正文**；类代码内容（见 6.7）允许行级 diff。
 
 ### 6.5 轻量优先
@@ -246,7 +249,7 @@ flowchart LR
 
 | 严重度 | 项 | 说明 |
 |--------|----|------|
-| 🟡 中 | 句子移动噪声 | 段落重排时会产生较大 `replace` 噪声；待 Phase 2 引入句子移动检测（与上一版比对已存在句） |
+| 🟡 中 | 句子移动噪声 | 已解决（v0.8）：`differ` 引入 `moved` 操作，内容相同仅位置变化的句子判为移动并中性渲染，重排不再虚增红/绿噪声 |
 | 🟡 中 | 自动检测变更 | 监听文件自动提交（Phase 3）尚未实现 |
 | 🟢 低 | 并排双栏 | 已实现（diff 片段支持 `?mode=split`，左删红 / 右增绿） |
 | 🟢 低 | 统计摘要 | 已实现（`?mode=stats`：字数/句数/段数/行数 + 变化量对比表） |
