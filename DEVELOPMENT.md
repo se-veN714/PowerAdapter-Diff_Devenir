@@ -5,7 +5,7 @@
 > **依赖**: Python 3.12 · 标准库 http.server · difflib · htmx · SQLite  
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
-> **更新**: 2026-07-07 — v1.1：文档同步——P4/P5 对调（P4=T7 前端优化收尾，P5=Obsidian 插件形态，计划在 V2 产品迭代落地）；GUIDE/DEVELOPMENT 标记 P0–P3 完成、Phase 4 为下一站
+> **更新**: 2026-07-07 — v1.2：监听防误提交——`_watcher_loop` 增加 `_WATCH_DEBOUNCE` 稳定窗口，Obsidian 等自动保存的连续写入折叠为「停顿即提交」，消除版本洪流；P4/P5 对调（v1.1）与 P0–P3 完成已记录
 
 ---
 
@@ -24,6 +24,7 @@
 | v0.9 | 2026-07-07 | 文档同步：GUIDE / DEVELOPMENT 标记 P0–P2 完成、Phase 3（文件自动检测提交）列为下一站；新增 `samples/` 测试 fixture（`padif-devlog-v1.md` / `-v2.md`）覆盖句内替换 / 句末插入 / 段落移动 / 列表新增 / 代码注释改写；已知项「句子移动噪声」标记已解决 |
 | v1.0 | 2026-07-07 | Phase 3 完成——文件自动检测提交：`server/watcher.py`（零依赖轮询 mtime + 内容 sha1）、`app.py` 后台守护线程 + `auto_commit()`、`/api/watch` 增删查端点、前端监听面板；P0–P3 全部完成 |
 | v1.1 | 2026-07-07 | 文档同步：P4/P5 对调——P4 改为「T7 前端优化（收尾）」作为 V1 主线下一站，P5 改为「Obsidian 插件形态」并明确计划在 V2 产品迭代中落地；修正此前「插件已在 v2 迭代」措辞为「将在 V2 迭代」 |
+| v1.2 | 2026-07-07 | 防误提交：`_watcher_loop` 增加 `_WATCH_DEBOUNCE = 5.0` 稳定窗口——文件变化后等待连续 N 秒无变化才提交，Obsidian 自动保存的连续写入折叠为「停顿即提交」，避免每敲一字生成一个版本；自动化测试验证 5 次快速改写仅产出 1 个版本 |
 
 ---
 
@@ -192,6 +193,7 @@ sequenceDiagram
 - **只检测不提交**：`watcher.py` 仅负责「哪些文件变了」，`app.py` 的 `auto_commit()` 负责提交，关注点分离、易单测。
 - **提交语义与手动一致**：变化内容作为新版本入库存 `patch`（该文章无历史则从 `major` 初始快照起步），复用 `version.bump` 与 `differ.build_stats`。
 - **控制端点**：`POST /api/watch`（监听）、`GET /api/watch`（列表）、`DELETE /api/watch?path=`（停止）；前端「监听」面板可增删与查看。
+- **防误提交（稳定窗口）**：`_watcher_loop` 在 `poll()` 检测到内容变化后**不立即提交**，而是记录变化时间戳，仅当文件连续 `_WATCH_DEBOUNCE`（默认 5s）未再变化时才调用 `auto_commit()`。Obsidian 等自动保存工具的连续写入会被折叠为「停顿即提交」一次，杜绝版本洪流；自动化测试验证 5 次快速改写仅产出 1 个版本。
 
 ---
 

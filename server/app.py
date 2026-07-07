@@ -35,6 +35,7 @@ store.init_db()
 # ---------- 文件监听（Phase 3） ----------
 WATCHER = watcher_mod.WatchRegistry()
 _WATCH_INTERVAL = 2.0  # 轮询间隔（秒）
+_WATCH_DEBOUNCE = 5.0  # 稳定窗口（秒）：文件连续 N 秒无变化才提交，避免自动保存造成误提交洪流
 
 
 def auto_commit(resolved_path: str, content: str) -> dict:
@@ -62,14 +63,26 @@ def auto_commit(resolved_path: str, content: str) -> dict:
 
 
 def _watcher_loop() -> None:
-    """后台守护线程：周期性 poll 监听文件，对变化内容自动提交。"""
+    """后台守护线程：周期性 poll 监听文件，对变化内容自动提交。
+
+    防误提交：文件内容变化后并不立即提交，而是等待其连续
+    _WATCH_DEBOUNCE 秒不再变化（即「稳定」）才提交。这样 Obsidian 等
+    自动保存工具在写作过程中的连续写入，会被折叠为「停顿即提交」，
+    避免每敲一个字就生成一个版本。
+    """
+    pending: dict[str, float] = {}  # resolved_path -> 最近一次变化的时间戳
     while True:
         try:
-            for rp, content in WATCHER.poll():
-                try:
-                    auto_commit(rp, content)
-                except Exception as e:  # 单文件失败不应拖垮整个循环
-                    print(f"[watcher] auto-commit 失败 {rp}: {e}")
+            for rp, _content in WATCHER.poll():
+                pending[rp] = time.time()
+            now = time.time()
+            for rp, ts in list(pending.items()):
+                if now - ts >= _WATCH_DEBOUNCE:
+                    try:
+                        auto_commit(rp, Path(rp).read_text(encoding="utf-8"))
+                    except Exception as e:  # 单文件失败不应拖垮整个循环
+                        print(f"[watcher] auto-commit 失败 {rp}: {e}")
+                    pending.pop(rp, None)
         except Exception as e:
             print(f"[watcher] poll 异常: {e}")
         time.sleep(_WATCH_INTERVAL)
