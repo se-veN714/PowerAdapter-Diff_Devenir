@@ -143,20 +143,31 @@ def frag_versions(article_id: int) -> str:
       <select id="from">{opts}</select>
       <span>对比</span>
       <select id="to">{opts}</select>
+      <select id="diff-mode">
+        <option value="inline">行内</option>
+        <option value="split">并排</option>
+      </select>
       <button hx-get="/frag/articles/{article_id}/diff"
-              hx-include="#from,#to" hx-target="#diff" hx-swap="innerHTML">查看差异</button>
+              hx-include="#from,#to,#diff-mode" hx-target="#diff" hx-swap="innerHTML">查看差异</button>
     </div>
     <ul class="ver-list">{rows}</ul>
     <div id="diff" class="diff-view"></div>
     """
 
 
-def frag_diff(article_id: int, from_id: str, to_id: str) -> str:
+def frag_diff(article_id: int, from_id: str, to_id: str, mode: str = "inline") -> str:
     a = store.get_version(int(from_id)) if from_id else None
     b = store.get_version(int(to_id)) if to_id else None
     if not a or not b:
         return '<p class="muted">请选择两个版本。</p>'
     ops = diff_sentences(a["content"], b["content"])
+    stats = build_stats(a["content"], b["content"])
+    stat_line = (
+        f'<p class="stats">句+{stats["sentences_added"]} / 句-{stats["sentences_removed"]} '
+        f'/ 字+{stats["chars_added"]} / 字-{stats["chars_removed"]}</p>'
+    )
+    if mode == "split":
+        return stat_line + _render_split(ops, a["version"], b["version"])
     parts = []
     for o in ops:
         if o.op == "equal":
@@ -171,12 +182,40 @@ def frag_diff(article_id: int, from_id: str, to_id: str) -> str:
                 for x in o.inner
             )
             parts.append(f'<span class="rep">{inner}</span>')
-    stats = build_stats(a["content"], b["content"])
-    stat_line = (
-        f'<p class="stats">句+{stats["sentences_added"]} / 句-{stats["sentences_removed"]} '
-        f'/ 字+{stats["chars_added"]} / 字-{stats["chars_removed"]}</p>'
-    )
     return stat_line + '<div class="diff-body">' + "".join(parts) + "</div>"
+
+
+def _render_split(ops, ver_a: str, ver_b: str) -> str:
+    """并排双栏：左栏为 from 版（删除标红、新增留空），右栏为 to 版（新增标绿、删除留空）。"""
+    left, right = [], []
+    for o in ops:
+        if o.op == "equal":
+            left.append(_esc(o.text)); right.append(_esc(o.text))
+        elif o.op == "delete":
+            left.append(f'<span class="del">{_esc(o.text)}</span>')
+            right.append('<span class="ph">　</span>')
+        elif o.op == "insert":
+            left.append('<span class="ph">　</span>')
+            right.append(f'<span class="ins">{_esc(o.text)}</span>')
+        elif o.op == "replace":
+            linner = "".join(
+                f'<span class="{"del" if x.op=="delete" else "eq"}">{_esc(x.text)}</span>'
+                for x in o.inner
+            )
+            rinner = "".join(
+                f'<span class="{"ins" if x.op=="insert" else "eq"}">{_esc(x.text)}</span>'
+                for x in o.inner
+            )
+            left.append(f'<span class="rep">{linner}</span>')
+            right.append(f'<span class="rep">{rinner}</span>')
+    return (
+        '<div class="diff-split">'
+        f'<div class="pane pane-l"><div class="pane-h">v{_esc(ver_a)}（左）</div>'
+        f'<div class="pane-body">{"".join(left)}</div></div>'
+        f'<div class="pane pane-r"><div class="pane-h">v{_esc(ver_b)}（右）</div>'
+        f'<div class="pane-body">{"".join(right)}</div></div>'
+        '</div>'
+    )
 
 
 # ---------- 路由 ----------
@@ -233,7 +272,8 @@ class Handler(BaseHTTPRequestHandler):
             aid = int(path.split("/")[3])
             f = qs.get("from", [""])[0]
             t = qs.get("to", [""])[0]
-            return _send_html(self, frag_diff(aid, f, t))
+            mode = qs.get("mode", ["inline"])[0]
+            return _send_html(self, frag_diff(aid, f, t, mode))
 
         self.send_error(404)
 
