@@ -57,5 +57,45 @@ async function commitVersion() {
   document.getElementById("commit-msg").value = "";
 }
 
-// 页面加载即拉取文章列表
-document.addEventListener("DOMContentLoaded", loadArticles);
+// ---------- 文件监听（Phase 3） ----------
+async function watchMd() {
+  const path = document.getElementById("watch-path").value.trim();
+  if (!path) { alert("请填写要监听的文件路径"); return; }
+  const res = await fetch("/api/watch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  await loadWatch();
+}
+
+async function loadWatch() {
+  const res = await fetch("/api/watch");
+  const data = await res.json();
+  const list = data.watched || [];
+  const el = document.getElementById("watch-list");
+  if (!list.length) { el.innerHTML = '<p class="muted">暂无监听。</p>'; return; }
+  el.innerHTML = '<ul class="ver-list">' + list.map(p =>
+    `<li><span class="wpath">${escapeHtml(p)}</span> ` +
+    `<button class="wstop" data-path="${escapeAttr(p)}">停止</button></li>`
+  ).join("") + "</ul>";
+  el.querySelectorAll("button.wstop").forEach(b => {
+    b.addEventListener("click", () => removeWatch(b.dataset.path));
+  });
+}
+
+async function removeWatch(path) {
+  const res = await fetch("/api/watch?path=" + encodeURIComponent(path), { method: "DELETE" });
+  await res.json();
+  await loadWatch();
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/"/g, "&quot;"); }
+
+// 页面加载即拉取文章列表与监听列表
+document.addEventListener("DOMContentLoaded", () => { loadArticles(); loadWatch(); });

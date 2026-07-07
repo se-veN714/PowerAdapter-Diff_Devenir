@@ -5,7 +5,7 @@
 > **依赖**: Python 3.12 · 标准库 http.server · difflib · htmx · SQLite  
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
-> **更新**: 2026-07-07 — v0.8：Phase 2 完成——句子移动检测降噪（段落重排不再产生红/绿噪声）
+> **更新**: 2026-07-07 — v1.0：Phase 3 完成——文件自动检测提交（server/watcher.py 零依赖轮询 + /api/watch 增删查 + 前端监听面板）；GUIDE/DEVELOPMENT 标记 P0–P3 完成
 
 ---
 
@@ -21,6 +21,8 @@
 | v0.6 | 2026-07-07 | 修复「查看差异」按钮无响应：`app.js` 用 `innerHTML` 注入片段后浏览器不会自动重扫 htmx，须显式 `htmx.process(node)`；文章链接改 `onclick` 直连；`frag_diff` 增加同版本对比提示 |
 | v0.7 | 2026-07-07 | 修复不同版本也误报「请选择两个版本」：`hx-include` 的 `<select>` 缺 `name` 属性导致 `from/to` 参数空发；并默认 `#from` 选最早、`#to` 选最新版本 |
 | v0.8 | 2026-07-07 | Phase 2 收官——句子移动检测降噪：`differ` 新增 `moved` 操作（内容相同仅位置变化），全局配对 + 位置偏移判定；重排段落不再产生红/绿噪声；相似度 <0.5 退化为纯增删以防误配字符级高亮 |
+| v0.9 | 2026-07-07 | 文档同步：GUIDE / DEVELOPMENT 标记 P0–P2 完成、Phase 3（文件自动检测提交）列为下一站；新增 `samples/` 测试 fixture（`padif-devlog-v1.md` / `-v2.md`）覆盖句内替换 / 句末插入 / 段落移动 / 列表新增 / 代码注释改写；已知项「句子移动噪声」标记已解决 |
+| v1.0 | 2026-07-07 | Phase 3 完成——文件自动检测提交：`server/watcher.py`（零依赖轮询 mtime + 内容 sha1）、`app.py` 后台守护线程 + `auto_commit()`、`/api/watch` 增删查端点、前端监听面板；P0–P3 全部完成 |
 
 ---
 
@@ -69,6 +71,7 @@ flowchart TD
 | `server/app.py` | 模块 | 标准库 http.server 应用与路由编排（/api JSON + /frag htmx 片段 + 静态） | `import_markdown()`, `commit_version()`, `frag_articles()`, `frag_versions()`, `frag_diff()` |
 | `server/differ.py` | 模块 | 句子级 diff 引擎 | `segment(text)`, `diff_sentences(a, b)`, `build_stats()` |
 | `server/version.py` | 模块 | 语义版本标注引导 | `bump(prev, kind)`, `suggest_kind(diff_stats)`, `gentle_warn(content_a, content_b)` |
+| `server/watcher.py` | 模块 | Phase 3 文件监听：零依赖轮询（mtime + 内容 sha1），仅做检测 | `WatchRegistry.register() / unregister() / list() / poll()` |
 | `server/store.py` | 模块 | SQLite 读写入口 | `init_db()`, `save_article()`, `save_version()`, `get_versions()`, `get_version()` |
 | `web/index.html` | 模板 | 单页骨架 + htmx 挂载点 | — |
 | `web/app.js` | 脚本 | 前端交互（import/commit 用 fetch，列表/diff 用 htmx 片段委托） | `importMd()`, `selectArticle()`, `commitVersion()`, `loadArticles()` |
@@ -76,6 +79,8 @@ flowchart TD
 | `data/padif.db` | 数据 | SQLite 版本库（运行期生成，已被 `.gitignore` 忽略） | — |
 | `GUIDE-PAdif.md` | 文档 | 需求上下文与设计指南 | — |
 | `DEVELOPMENT.md` | 文档 | 本开发者文档 | — |
+| `samples/padif-devlog-v1.md` | 测试 fixture | 回归基线文本（散文段落 + 列表 + 代码块） | — |
+| `samples/padif-devlog-v2.md` | 测试 fixture | 刻意修改版：覆盖句内替换 / 句末插入 / 段落移动 / 列表新增 / 代码注释改写，用于验证 diff 三视图 | — |
 
 ---
 
@@ -166,6 +171,29 @@ sequenceDiagram
 
 ---
 
+### 4.3 监听文件自动提交（Phase 3）
+
+```mermaid
+sequenceDiagram
+    participant F as 被监听的 .md 文件
+    participant W as watcher.WatchRegistry（后台线程轮询）
+    participant A as app.auto_commit
+    participant ST as store.py / version.py
+
+    F->>W: 文件保存（mtime + 内容哈希变化）
+    W->>W: poll() 检测到内容哈希变化
+    W->>A: 回调 (resolved_path, content)
+    A->>ST: save_article / get_latest_version / bump(patch) / save_version
+    ST-->>A: 新版本（如 1.0.1，message=自动保存）
+```
+
+- **零第三方依赖**：用轮询（mtime + 内容 sha1）而非 watchdog，契合 managed Python 无法装包的环境。
+- **只检测不提交**：`watcher.py` 仅负责「哪些文件变了」，`app.py` 的 `auto_commit()` 负责提交，关注点分离、易单测。
+- **提交语义与手动一致**：变化内容作为新版本入库存 `patch`（该文章无历史则从 `major` 初始快照起步），复用 `version.bump` 与 `differ.build_stats`。
+- **控制端点**：`POST /api/watch`（监听）、`GET /api/watch`（列表）、`DELETE /api/watch?path=`（停止）；前端「监听」面板可增删与查看。
+
+---
+
 ## 5. API 列表
 
 | 方法 | 路径 | 说明 | 请求体 / 参数 | 响应 |
@@ -179,6 +207,9 @@ sequenceDiagram
 | GET | `/frag/articles` | 文章列表 HTML 片段（htmx） | — | HTML |
 | GET | `/frag/articles/{id}/versions` | 版本列表 + 对比控件 HTML 片段 | — | HTML |
 | GET | `/frag/articles/{id}/diff` | 差异高亮 HTML 片段（支持 `?mode=inline\|split\|stats`） | `?from=&to=&mode=` | HTML |
+| POST | `/api/watch` | 加入监听路径 | `{ path }` | `{ ok, added, watched }` |
+| GET | `/api/watch` | 监听路径列表 | — | `{ watched: [...] }` |
+| DELETE | `/api/watch` | 停止监听某路径 | `?path=` | `{ ok, removed, watched }` |
 
 > 版本号由 `version.py` 依据 `version_kind` 自动递增；`commit_message` 必填非空，但不强制长度/格式。`/frag/*` 由 htmx 直接消费，服务端渲染高亮。
 
@@ -227,6 +258,7 @@ sequenceDiagram
 ### 6.8 测试与验证集约定
 - **验证集（validation）**：项目自有文档（GUIDE / DEVELOPMENT / CONTEXT）体量足够大、结构复杂，可作功能 sanity check 的验证集。
 - **测试集（test fixtures）**：文档**过大，不宜直接作测试集**；须另建**小而聚焦**的测试用例（针对 `differ` 的边界：断句、句内替换、重排噪声、行级 vs 句级切换等），便于快速、确定性回归。
+- 已有聚焦 fixture：`samples/padif-devlog-v1.md`（基线）与 `samples/padif-devlog-v2.md`（刻意修改版，覆盖句内替换 / 句末插入 / 段落移动 / 列表新增 / 代码注释改写），导入两版即可回归验证 diff 三视图（行内 / 并排 / 统计）。
 - 当前 MVP 以手测 + `curl` 端到端自测为主；补 focused 单测时遵循上述区分。
 
 ---
@@ -249,8 +281,8 @@ flowchart LR
 
 | 严重度 | 项 | 说明 |
 |--------|----|------|
-| 🟡 中 | 句子移动噪声 | 已解决（v0.8）：`differ` 引入 `moved` 操作，内容相同仅位置变化的句子判为移动并中性渲染，重排不再虚增红/绿噪声 |
-| 🟡 中 | 自动检测变更 | 监听文件自动提交（Phase 3）尚未实现 |
+| ✅ 已解决 | 句子移动噪声 | `differ` 引入 `moved` 操作，内容相同仅位置变化的句子判为移动并中性渲染，重排不再虚增红/绿噪声（v0.8 落地，v0.9 关闭） |
+| ✅ 已解决 | 自动检测变更 | `watcher.WatchRegistry` 零依赖轮询（mtime + 内容 sha1），变化即自动提交 patch 版本（首次为 major 初始快照）；`/api/watch` 增删查 + 前端监听面板（v1.0） |
 | 🟢 低 | 并排双栏 | 已实现（diff 片段支持 `?mode=split`，左删红 / 右增绿） |
 | 🟢 低 | 统计摘要 | 已实现（`?mode=stats`：字数/句数/段数/行数 + 变化量对比表） |
 | 🟢 低 | 统计摘要增强 | 基础概览已落地（字数/句数/段数/行数 + 变化量），后续可加更丰富维度 |

@@ -21,6 +21,9 @@ from urllib.parse import urlparse, parse_qs
 
 import store
 import version
+import watcher as watcher_mod
+import threading
+import time
 from differ import diff_sentences, build_stats, summarize, to_dict
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,6 +31,48 @@ WEB = ROOT / "web"
 DATA = ROOT / "data"
 
 store.init_db()
+
+# ---------- 文件监听（Phase 3） ----------
+WATCHER = watcher_mod.WatchRegistry()
+_WATCH_INTERVAL = 2.0  # 轮询间隔（秒）
+
+
+def auto_commit(resolved_path: str, content: str) -> dict:
+    """被监听文件发生变化时自动提交一个版本。
+
+    - 若该文章此前无版本（首次被监听到变化），以 major「初始快照」起步；
+    - 否则按 patch 自动递增，message 标注「自动保存（检测到文件变更）」。
+    - 复用与手动提交完全相同的 store / version 路径，保证版本语义一致。
+    """
+    title = Path(resolved_path).stem
+    aid = store.save_article(resolved_path, title)
+    latest = store.get_latest_version(aid)
+    if latest:
+        prev_content = latest["content"]
+        kind = "patch"
+        message = "自动保存（检测到文件变更）"
+    else:
+        prev_content = ""
+        kind = "major"
+        message = "开始监听（初始快照）"
+    stats = build_stats(prev_content, content)
+    ver = version.bump(latest["version"] if latest else None, kind)
+    vid = store.save_version(aid, content, message, ver, kind, stats)
+    return {"article_id": aid, "version_id": vid, "version": ver, "kind": kind}
+
+
+def _watcher_loop() -> None:
+    """后台守护线程：周期性 poll 监听文件，对变化内容自动提交。"""
+    while True:
+        try:
+            for rp, content in WATCHER.poll():
+                try:
+                    auto_commit(rp, content)
+                except Exception as e:  # 单文件失败不应拖垮整个循环
+                    print(f"[watcher] auto-commit 失败 {rp}: {e}")
+        except Exception as e:
+            print(f"[watcher] poll 异常: {e}")
+        time.sleep(_WATCH_INTERVAL)
 
 
 # ---------- 响应辅助 ----------
@@ -317,6 +362,26 @@ class Handler(BaseHTTPRequestHandler):
                 return _send_json(self, {"error": "版本不存在"}, 400)
             return _send_json(self, {"ops": to_dict(diff_sentences(a["content"], b["content"]))})
 
+        # ---- 文件监听（Phase 3） ----
+        if method == "POST" and path == "/api/watch":
+            body = _read_json_body(self)
+            p = (body.get("path") or "").strip()
+            if not p:
+                return _send_json(self, {"error": "path 必填"}, 400)
+            try:
+                added = WATCHER.register(p)
+            except Exception as e:
+                return _send_json(self, {"error": str(e)}, 400)
+            return _send_json(self, {"ok": True, "added": added, "watched": WATCHER.list()})
+        if method == "GET" and path == "/api/watch":
+            return _send_json(self, {"watched": WATCHER.list()})
+        if method == "DELETE" and path == "/api/watch":
+            p = (qs.get("path", [""])[0] or "").strip()
+            if not p:
+                return _send_json(self, {"error": "path 必填"}, 400)
+            removed = WATCHER.unregister(p)
+            return _send_json(self, {"ok": True, "removed": removed, "watched": WATCHER.list()})
+
         # ---- htmx 片段 ----
         if method == "GET" and path == "/frag/articles":
             return _send_html(self, frag_articles())
@@ -338,12 +403,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._route()
 
+    def do_DELETE(self):
+        self._route()
+
     def log_message(self, *args):
         pass  # 静默
 
 
 def main():
     port = int(os.environ.get("PADIF_PORT", "18887"))
+    threading.Thread(target=_watcher_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"PAdif 运行中： http://127.0.0.1:{port}/")
     try:
