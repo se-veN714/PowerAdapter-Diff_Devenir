@@ -5,7 +5,7 @@
 > **依赖**: Python 3.12 · 标准库 http.server · difflib · htmx · SQLite  
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
-> **更新**: 2026-07-07 — v0.4：明确 Diff 粒度策略与测试集约定；CONTEXT.md 调整为本地非跟踪参考
+> **更新**: 2026-07-07 — v0.5：Phase 2 统计摘要视图（diff 片段支持 `?mode=stats`）；新增 `differ.summarize()` 绝对指标
 
 ---
 
@@ -17,6 +17,7 @@
 | v0.2 | 2026-07-07 | 同步 MVP 落地状态：后端修正为「标准库 http.server」、补全实际函数名与 `/frag/*` 端点、端口 18887（支持 `PADIF_PORT`）、新增句子移动噪声与 T7 已知项、填充运行 / DB / git 附录 |
 | v0.3 | 2026-07-07 | 实现并排双栏差异视图：`frag_diff` 支持 `?mode=split`，新增 `_render_split`（左栏删红、右栏增绿）；`frag_versions` 加行内/并排切换；`index.html` 补双栏样式 |
 | v0.4 | 2026-07-07 | 新增 Diff 粒度策略（散文句子级 / 类代码行级 / 结构化健壮性优先）与测试集约定；CONTEXT.md 调整为本地非跟踪参考 |
+| v0.5 | 2026-07-07 | Phase 2 统计摘要视图：`frag_diff` 支持 `?mode=stats`，新增 `_render_stats` + `differ.summarize()`（字数/句数/段数/行数 + 变化量）；`frag_versions` 加「统计」切换；`index.html` 补表格样式 |
 
 ---
 
@@ -174,7 +175,7 @@ sequenceDiagram
 | GET | `/api/articles/{id}/diff` | 对比两版 | `?from=&to=` | `{ ops: [...] }` |
 | GET | `/frag/articles` | 文章列表 HTML 片段（htmx） | — | HTML |
 | GET | `/frag/articles/{id}/versions` | 版本列表 + 对比控件 HTML 片段 | — | HTML |
-| GET | `/frag/articles/{id}/diff` | 差异高亮 HTML 片段（支持 `?mode=inline\|split`） | `?from=&to=&mode=` | HTML |
+| GET | `/frag/articles/{id}/diff` | 差异高亮 HTML 片段（支持 `?mode=inline\|split\|stats`） | `?from=&to=&mode=` | HTML |
 
 > 版本号由 `version.py` 依据 `version_kind` 自动递增；`commit_message` 必填非空，但不强制长度/格式。`/frag/*` 由 htmx 直接消费，服务端渲染高亮。
 
@@ -247,6 +248,7 @@ flowchart LR
 | 🟡 中 | 句子移动噪声 | 段落重排时会产生较大 `replace` 噪声；待 Phase 2 引入句子移动检测（与上一版比对已存在句） |
 | 🟡 中 | 自动检测变更 | 监听文件自动提交（Phase 3）尚未实现 |
 | 🟢 低 | 并排双栏 | 已实现（diff 片段支持 `?mode=split`，左删红 / 右增绿） |
+| 🟢 低 | 统计摘要 | 已实现（`?mode=stats`：字数/句数/段数/行数 + 变化量对比表） |
 | 🟡 中 | 统计摘要增强 | 当前仅有基础增删统计，待更丰富的概览（Phase 2） |
 | 🟢 低 | 前端优化（T7） | 样式 / 交互 / 响应式 / 无障碍，留待收尾统一处理 |
 | 🟢 低 | Obsidian 插件形态 | Phase 4，复用存储与引擎 |

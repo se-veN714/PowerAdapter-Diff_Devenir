@@ -21,7 +21,7 @@ from urllib.parse import urlparse, parse_qs
 
 import store
 import version
-from differ import diff_sentences, build_stats, to_dict
+from differ import diff_sentences, build_stats, summarize, to_dict
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -146,6 +146,7 @@ def frag_versions(article_id: int) -> str:
       <select id="diff-mode">
         <option value="inline">行内</option>
         <option value="split">并排</option>
+        <option value="stats">统计</option>
       </select>
       <button hx-get="/frag/articles/{article_id}/diff"
               hx-include="#from,#to,#diff-mode" hx-target="#diff" hx-swap="innerHTML">查看差异</button>
@@ -168,6 +169,8 @@ def frag_diff(article_id: int, from_id: str, to_id: str, mode: str = "inline") -
     )
     if mode == "split":
         return stat_line + _render_split(ops, a["version"], b["version"])
+    if mode == "stats":
+        return _render_stats(a, b)
     parts = []
     for o in ops:
         if o.op == "equal":
@@ -215,6 +218,42 @@ def _render_split(ops, ver_a: str, ver_b: str) -> str:
         f'<div class="pane pane-r"><div class="pane-h">v{_esc(ver_b)}（右）</div>'
         f'<div class="pane-body">{"".join(right)}</div></div>'
         '</div>'
+    )
+
+
+def _render_stats(ver_a: dict, ver_b: dict) -> str:
+    """统计摘要：两版绝对指标（字数/句数/段数/行数）+ 变化量。
+
+    用途：先概览「差了多少」，再决定是否深入看行内/并排细节。
+    颜色沿用应用内 diff 配色：增长=绿（s-up），减少=红（s-down）。
+    """
+    sa = summarize(ver_a["content"])
+    sb = summarize(ver_b["content"])
+    metrics = [
+        ("字数（去空白）", "chars"),
+        ("句数", "sentences"),
+        ("段数", "paragraphs"),
+        ("行数", "lines"),
+    ]
+    rows = ""
+    for label, key in metrics:
+        va, vb = sa[key], sb[key]
+        delta = vb - va
+        if delta > 0:
+            dcls, dsign = "s-up", f"+{delta}"
+        elif delta < 0:
+            dcls, dsign = "s-down", f"{delta}"
+        else:
+            dcls, dsign = "s-eq", "±0"
+        rows += (
+            f"<tr><td>{label}</td><td>{va}</td><td>{vb}</td>"
+            f'<td class="s-delta {dcls}">{dsign}</td></tr>'
+        )
+    return (
+        '<table class="stat-table">'
+        f'<thead><tr><th>指标</th><th>v{_esc(ver_a["version"])}</th>'
+        f'<th>v{_esc(ver_b["version"])}</th><th>变化</th></tr></thead>'
+        f"<tbody>{rows}</tbody></table>"
     )
 
 

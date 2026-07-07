@@ -139,6 +139,25 @@ def build_stats(a: str, b: str) -> dict:
     }
 
 
+def summarize(text: str) -> dict:
+    """绝对指标，用于统计摘要视图（字数 / 句数 / 段数 / 行数）。
+
+    与 build_stats（增量）互补：前者描述两版「差多少」，本函数描述每版「有多少」。
+    """
+    if not text:
+        return {"chars": 0, "sentences": 0, "paragraphs": 0, "lines": 0}
+    text = text.replace("\r\n", "\n")
+    paras = [p for p in _PARAGRAPH_RE.split(text) if p.strip()]
+    # 字数：去除所有空白字符后的字符数，更接近中文「字数」直觉
+    chars = len(re.sub(r"\s", "", text))
+    return {
+        "chars": chars,
+        "sentences": len(segment(text)),
+        "paragraphs": len(paras),
+        "lines": text.count("\n") + 1,
+    }
+
+
 def to_dict(ops: List[DiffOp]) -> list:
     """将 DiffOp 序列序列化为 JSON 友好的 dict 列表。"""
 
