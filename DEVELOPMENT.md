@@ -5,7 +5,7 @@
 > **依赖**: Python 3.12 · 标准库 http.server · difflib · htmx · SQLite  
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
-> **更新**: 2026-07-07 — v1.2：监听防误提交——`_watcher_loop` 增加 `_WATCH_DEBOUNCE` 稳定窗口，Obsidian 等自动保存的连续写入折叠为「停顿即提交」，消除版本洪流；P4/P5 对调（v1.1）与 P0–P3 完成已记录
+> **更新**: 2026-07-07 — v1.3：监听三道闸门——稳定窗口由 5s 拉长至 30s（`_WATCH_DEBOUNCE`）、新增最小提交周期 180s（`_WATCH_MIN_INTERVAL`）、新增关闭编辑器即提交（`_WATCH_CLOSE_PROC` 默认 `Obsidian.exe`，进程由在→不在 强制 flush）；三变量均支持 `PADIF_WATCH_*` 环境变量覆盖；`_editor_present` 修复中文 Windows 下 `tasklist` GBK 解码崩溃；哲学明确：自动提交仅作便利，手动提交（带 message 回顾思路）才是主线
 
 ---
 
@@ -25,6 +25,7 @@
 | v1.0 | 2026-07-07 | Phase 3 完成——文件自动检测提交：`server/watcher.py`（零依赖轮询 mtime + 内容 sha1）、`app.py` 后台守护线程 + `auto_commit()`、`/api/watch` 增删查端点、前端监听面板；P0–P3 全部完成 |
 | v1.1 | 2026-07-07 | 文档同步：P4/P5 对调——P4 改为「T7 前端优化（收尾）」作为 V1 主线下一站，P5 改为「Obsidian 插件形态」并明确计划在 V2 产品迭代中落地；修正此前「插件已在 v2 迭代」措辞为「将在 V2 迭代」 |
 | v1.2 | 2026-07-07 | 防误提交：`_watcher_loop` 增加 `_WATCH_DEBOUNCE = 5.0` 稳定窗口——文件变化后等待连续 N 秒无变化才提交，Obsidian 自动保存的连续写入折叠为「停顿即提交」，避免每敲一字生成一个版本；自动化测试验证 5 次快速改写仅产出 1 个版本 |
+| v1.3 | 2026-07-07 | 监听三道闸门（防误提交 + 防刷屏 + 关闭即提）：① 稳定窗口由 5s 拉长为 `_WATCH_DEBOUNCE = 30.0`；② 新增最小提交周期 `_WATCH_MIN_INTERVAL = 180.0`（两次自动提交最小间隔，应对写作的不可预测间断）；③ 新增关闭编辑器即提交——`_editor_present(proc)` 检测进程（默认 `Obsidian.exe`，`_WATCH_CLOSE_PROC` 置空禁用），进程由在→不在 时强制 flush 所有脏文件、绕过稳定窗口与最小周期。三者均支持 `PADIF_WATCH_*` 环境变量覆盖；修复中文 Windows `tasklist` 输出 GBK 致 `_editor_present` 崩溃的问题（改用字节捕获 + `errors="replace"`）。哲学明确：自动提交仅作便利，手动提交（带 message 回顾思路）才是主线 |
 
 ---
 
@@ -186,14 +187,31 @@ sequenceDiagram
     W->>W: poll() 检测到内容哈希变化
     W->>A: 回调 (resolved_path, content)
     A->>ST: save_article / get_latest_version / bump(patch) / save_version
-    ST-->>A: 新版本（如 1.0.1，message=自动保存）
+    ST-->>A: 新版本（如 1.0.1，message=自动保存（文件稳定后））
 ```
 
 - **零第三方依赖**：用轮询（mtime + 内容 sha1）而非 watchdog，契合 managed Python 无法装包的环境。
 - **只检测不提交**：`watcher.py` 仅负责「哪些文件变了」，`app.py` 的 `auto_commit()` 负责提交，关注点分离、易单测。
 - **提交语义与手动一致**：变化内容作为新版本入库存 `patch`（该文章无历史则从 `major` 初始快照起步），复用 `version.bump` 与 `differ.build_stats`。
 - **控制端点**：`POST /api/watch`（监听）、`GET /api/watch`（列表）、`DELETE /api/watch?path=`（停止）；前端「监听」面板可增删与查看。
-- **防误提交（稳定窗口）**：`_watcher_loop` 在 `poll()` 检测到内容变化后**不立即提交**，而是记录变化时间戳，仅当文件连续 `_WATCH_DEBOUNCE`（默认 5s）未再变化时才调用 `auto_commit()`。Obsidian 等自动保存工具的连续写入会被折叠为「停顿即提交」一次，杜绝版本洪流；自动化测试验证 5 次快速改写仅产出 1 个版本。
+- **三道闸门（防误提交 + 防刷屏 + 关闭即提）**：自动提交需同时满足以下规则，按「宽松 → 严格」分层，核心是让自动提交**贴合写作的真实节律**（连续自动保存、不可预测的间断思考），而非无脑刷版本。
+
+  1. **稳定窗口（`_WATCH_DEBOUNCE`，默认 30s）**：`poll()` 检测到内容变化后**不立即提交**，记录变化时间戳；仅当文件连续 N 秒未再变化（即你「停顿」的那一刻）才提交。Obsidian 自动保存的连续写入被折叠为「停顿即提交」一次。
+  2. **最小提交周期（`_WATCH_MIN_INTERVAL`，默认 180s）**：两次自动提交的最小间隔。即便稳定窗口已满足，若距上次自动提交不足该周期，则延后到周期到达再提交。应对「写写停停、思考很久才落笔」的不可预测间断——避免短时间内被多次稳定窗口切成多个碎版本。
+  3. **关闭编辑器即提交（`_WATCH_CLOSE_PROC`，默认 `Obsidian.exe`）**：`_editor_present(proc)` 用 `tasklist`（Windows）/ `pgrep`（其他）检测进程是否在运行；进程由**在 → 不在**（你「写完并关闭 Obsidian」）时，强制 flush 所有脏文件、绕过稳定窗口与最小周期立即提交——这是最自然的「我写完了」信号。进程名置空（`PADIF_WATCH_CLOSE_PROC=` ）即禁用该特性。
+
+  > **哲学定位**：自动提交**只是便利**——它替你兜底，避免忘了提交丢版本。但**手动提交（带 message 回顾思路）才是主线**：message 帮你日后回看「当时为什么这么改」，这是自动提交给不了的。故 `_watcher_loop` 的自动 message 固定为「自动保存（文件稳定后）」，与手动提交的语义清晰区分。
+
+- **配置项（环境变量覆盖，优先级高于默认值）**
+
+  | 环境变量 | 对应常量 | 默认 | 作用 |
+  |----------|----------|------|------|
+  | `PADIF_WATCH_DEBOUNCE` | `_WATCH_DEBOUNCE` | `30.0` | 稳定窗口秒数：文件连续无变化达到该值才提交 |
+  | `PADIF_WATCH_MIN_INTERVAL` | `_WATCH_MIN_INTERVAL` | `180.0` | 两次自动提交最小间隔秒数 |
+  | `PADIF_WATCH_CLOSE_PROC` | `_WATCH_CLOSE_PROC` | `Obsidian.exe` | 关闭即提交的进程名；置空禁用 |
+  | `PADIF_WATCH_INTERVAL` | `_WATCH_INTERVAL` | `2.0` | 轮询间隔秒数（与提交无关，仅影响变化检测延迟） |
+
+- **实现健壮性**：`watcher.WatchRegistry.poll()` 对单个文件的 `read_text(utf-8)` 异常做 `continue`，单文件损坏不拖垮整个守护线程；`_editor_present` 对 `tasklist` 输出改用字节捕获 + `errors="replace"`（中文 Windows 默认 GBK/cp936），避免 subprocess 读取崩溃。
 
 ---
 
@@ -285,7 +303,7 @@ flowchart LR
 | 严重度 | 项 | 说明 |
 |--------|----|------|
 | ✅ 已解决 | 句子移动噪声 | `differ` 引入 `moved` 操作，内容相同仅位置变化的句子判为移动并中性渲染，重排不再虚增红/绿噪声（v0.8 落地，v0.9 关闭） |
-| ✅ 已解决 | 自动检测变更 | `watcher.WatchRegistry` 零依赖轮询（mtime + 内容 sha1），变化即自动提交 patch 版本（首次为 major 初始快照）；`/api/watch` 增删查 + 前端监听面板（v1.0） |
+| ✅ 已解决 | 自动检测变更 | `watcher.WatchRegistry` 零依赖轮询（mtime + 内容 sha1），变化即自动提交 patch 版本（首次为 major 初始快照）；`/api/watch` 增删查 + 前端监听面板（v1.0）；v1.3 加三道闸门：稳定窗口 30s + 最小周期 180s + 关闭编辑器即提交（`Obsidian.exe` 进程检测），并修复中文 Windows `tasklist` GBK 解码崩溃 |
 | 🟢 低 | 并排双栏 | 已实现（diff 片段支持 `?mode=split`，左删红 / 右增绿） |
 | 🟢 低 | 统计摘要 | 已实现（`?mode=stats`：字数/句数/段数/行数 + 变化量对比表） |
 | 🟢 低 | 统计摘要增强 | 基础概览已落地（字数/句数/段数/行数 + 变化量），后续可加更丰富维度 |

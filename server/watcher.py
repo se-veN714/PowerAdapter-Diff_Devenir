@@ -55,8 +55,8 @@ class WatchRegistry:
             p = Path(rp)
             try:
                 mtime, h = self._probe(p)
-            except FileNotFoundError:
-                continue  # 文件暂不存在，跳过本周期
+            except (FileNotFoundError, UnicodeDecodeError, OSError):
+                continue  # 文件暂不存在 / 非 UTF-8 / 读取失败，跳过本周期（不拖垮整个循环）
             with self._lock:
                 old = self._state.get(rp)
             if old is None:

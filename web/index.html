@@ -87,13 +87,17 @@
         </div>
       </div>
       <div class="import-box" style="margin-top:18px;border-top:1px solid #222;padding-top:14px;">
-        <label class="muted">监听文件（保存即自动提交）</label>
+        <label class="muted">监听文件（写完自动提交）</label>
         <input id="watch-path" type="text" placeholder="例如 D:/notes/essay.md" />
         <div class="row" style="margin-top:8px;">
           <button onclick="watchMd()">开始监听</button>
           <button onclick="loadWatch()" style="background:#3a3f4a;">刷新</button>
         </div>
         <div id="watch-list" style="margin-top:8px;"></div>
+        <p class="muted" style="margin-top:8px;line-height:1.55;font-size:12px;">
+          自动提交仅为便利：文件稳定后、或关闭编辑器（Obsidian）时自动落版。<br/>
+          建议<b>手动提交并附言</b>，以回顾思路——自动提交不记录你的思考。
+        </p>
       </div>
       <h3 style="font-size:14px;color:#aaa;">文章</h3>
       <div id="articles"></div>

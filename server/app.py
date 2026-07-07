@@ -24,6 +24,8 @@ import version
 import watcher as watcher_mod
 import threading
 import time
+import subprocess
+import platform
 from differ import diff_sentences, build_stats, summarize, to_dict
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,10 +34,12 @@ DATA = ROOT / "data"
 
 store.init_db()
 
-# ---------- 文件监听（Phase 3） ----------
+# ---------- 文件监听（Phase 3 / 防误提交增强） ----------
 WATCHER = watcher_mod.WatchRegistry()
-_WATCH_INTERVAL = 2.0  # 轮询间隔（秒）
-_WATCH_DEBOUNCE = 5.0  # 稳定窗口（秒）：文件连续 N 秒无变化才提交，避免自动保存造成误提交洪流
+_WATCH_INTERVAL = 2.0       # 轮询间隔（秒）
+_WATCH_DEBOUNCE = float(os.environ.get("PADIF_WATCH_DEBOUNCE", "30.0"))        # 稳定窗口（秒）：文件连续 N 秒无变化才视为「写完了」
+_WATCH_MIN_INTERVAL = float(os.environ.get("PADIF_WATCH_MIN_INTERVAL", "180.0"))  # 最小提交周期（秒）：两次自动提交至少间隔 N 秒
+_WATCH_CLOSE_PROC = os.environ.get("PADIF_WATCH_CLOSE_PROC", "Obsidian.exe")   # 可选：监听该进程退出即视为「写完关闭」，强制 flush；置空则禁用
 
 
 def auto_commit(resolved_path: str, content: str) -> dict:
@@ -51,7 +55,7 @@ def auto_commit(resolved_path: str, content: str) -> dict:
     if latest:
         prev_content = latest["content"]
         kind = "patch"
-        message = "自动保存（检测到文件变更）"
+        message = "自动保存（文件稳定后）"
     else:
         prev_content = ""
         kind = "major"
@@ -62,29 +66,89 @@ def auto_commit(resolved_path: str, content: str) -> dict:
     return {"article_id": aid, "version_id": vid, "version": ver, "kind": kind}
 
 
-def _watcher_loop() -> None:
-    """后台守护线程：周期性 poll 监听文件，对变化内容自动提交。
+def _editor_present(proc_name: str) -> bool | None:
+    """检测某进程是否正在运行。无法判定时返回 None（不触发关闭逻辑）。
 
-    防误提交：文件内容变化后并不立即提交，而是等待其连续
-    _WATCH_DEBOUNCE 秒不再变化（即「稳定」）才提交。这样 Obsidian 等
-    自动保存工具在写作过程中的连续写入，会被折叠为「停顿即提交」，
-    避免每敲一个字就生成一个版本。
+    - Windows：tasklist 按 IMAGENAME 过滤（注意中文 Windows 下 tasklist 输出为
+      GBK，故用字节捕获 + errors="replace" 解码，避免 UTF-8 解码崩溃）；
+    - 其他平台：pgrep -f。
+    返回 True/False，失败时 None（避免误判导致误提交）。
     """
-    pending: dict[str, float] = {}  # resolved_path -> 最近一次变化的时间戳
+    if not proc_name:
+        return None
+    try:
+        if platform.system().lower().startswith("win"):
+            r = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {proc_name}", "/NH", "/FO", "CSV"],
+                capture_output=True, timeout=5,
+            )
+            out = r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
+            return proc_name.lower() in out.lower()
+        else:
+            r = subprocess.run(
+                ["pgrep", "-f", proc_name],
+                capture_output=True, timeout=5,
+            )
+            return bool(r.stdout.decode("utf-8", "replace").strip())
+    except Exception:
+        return None
+
+
+def _watcher_loop() -> None:
+    """后台守护线程：周期性 poll + 三道闸门，贴合「创作者掌控节奏」。
+
+    写文章是**间断、不可预测**的——长思考停顿、多次短促修改交错。
+    自动提交只是便利，真正的思路回顾依赖创作者**手动提交（带 message）**。
+    故设三道闸门：
+
+    1) 稳定窗口（_WATCH_DEBOUNCE）：文件连续 N 秒无变化才视为「写完了」。
+       自动保存的连续写入会被折叠为「停顿即提交」，不刷屏。
+    2) 最小提交周期（_WATCH_MIN_INTERVAL）：两次自动提交至少间隔 N 秒，
+       避免一段长写作中多次停顿被拆成多个版本。
+    3) 关闭即提交（_WATCH_CLOSE_PROC）：若配置了该编辑器进程，
+       当它退出（你「写完并关闭 Obsidian」），立即 flush 当前所有脏文件，
+       不受上面两道闸门限制——这是最明确的「写完」信号。
+    """
+    last_change: dict[str, float] = {}   # resolved_path -> 最近一次内容变化时间
+    last_commit: dict[str, float] = {}    # resolved_path -> 最近一次自动提交时间
+    was_up: bool | None = _editor_present(_WATCH_CLOSE_PROC) if _WATCH_CLOSE_PROC else None
+
     while True:
         try:
+            # 1) 检测变化（仅内容哈希变才记录，避免 mtime 抖动）
             for rp, _content in WATCHER.poll():
-                pending[rp] = time.time()
+                last_change[rp] = time.time()
+
             now = time.time()
-            for rp, ts in list(pending.items()):
-                if now - ts >= _WATCH_DEBOUNCE:
-                    try:
-                        auto_commit(rp, Path(rp).read_text(encoding="utf-8"))
-                    except Exception as e:  # 单文件失败不应拖垮整个循环
-                        print(f"[watcher] auto-commit 失败 {rp}: {e}")
-                    pending.pop(rp, None)
+
+            # 3) 关闭即提交：编辑器进程由在→不在，强制 flush 所有脏文件
+            if _WATCH_CLOSE_PROC:
+                up = _editor_present(_WATCH_CLOSE_PROC)
+                if up is not None and was_up is True and up is False:
+                    for rp in list(last_change.keys()):
+                        try:
+                            auto_commit(rp, Path(rp).read_text(encoding="utf-8"))
+                        except Exception as e:
+                            print(f"[watcher] 关闭 flush 失败 {rp}: {e}")
+                        last_commit[rp] = now
+                        last_change.pop(rp, None)
+                if up is not None:
+                    was_up = up
+
+            # 2) 常规闸门：稳定窗口 且 满足最小提交周期 才提交
+            for rp, ts in list(last_change.items()):
+                if now - ts < _WATCH_DEBOUNCE:
+                    continue  # 仍在变化中，等稳定
+                if now - last_commit.get(rp, 0) < _WATCH_MIN_INTERVAL:
+                    continue  # 距上次自动提交太近，等周期
+                try:
+                    auto_commit(rp, Path(rp).read_text(encoding="utf-8"))
+                except Exception as e:  # 单文件失败不应拖垮整个循环
+                    print(f"[watcher] auto-commit 失败 {rp}: {e}")
+                last_commit[rp] = now
+                last_change.pop(rp, None)
         except Exception as e:
-            print(f"[watcher] poll 异常: {e}")
+            print(f"[watcher] loop 异常: {e}")
         time.sleep(_WATCH_INTERVAL)
 
 
