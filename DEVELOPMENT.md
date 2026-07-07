@@ -5,7 +5,7 @@
 > **依赖**: Python 3.12 · 标准库 http.server · difflib · htmx · SQLite  
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
-> **更新**: 2026-07-07 — v0.6：修复「查看差异」无响应（innerHTML 注入后须 `htmx.process` 重新绑定）；新增同版本对比提示
+> **更新**: 2026-07-07 — v0.7：修复不同版本也误报「请选择两个版本」（`hx-include` 的 select 缺 `name` 属性）+ 默认 from=首 / to=末
 
 ---
 
@@ -255,6 +255,7 @@ flowchart LR
 | 🟢 低 | Obsidian 插件形态 | Phase 4，复用存储与引擎 |
 | 🟢 低 | 多文章批量导入 | 当前仅单文件导入 |
 | 🟡 中 | 动态 htmx 绑定 | 通过 `innerHTML` 注入的片段（如版本列表）须在其后调用 `htmx.process(node)`，否则片段内 `hx-*` 不生效（v0.6 已修复） |
+| 🟡 中 | htmx 包含元素的 name | `hx-include` 仅序列化带 `name` 属性的表单元素；`<select id="from">` 若缺 `name="from"`，`from`/`to` 参数会为空，服务端误判「未选版本」（v0.7 已修复） |
 
 ---
 

@@ -127,9 +127,13 @@ def frag_versions(article_id: int) -> str:
     vs = store.get_versions(article_id)
     if not vs:
         return "<p class=\"muted\">该文章暂无版本。</p>"
-    opts = "".join(
-        f'<option value="{v["id"]}">{_esc(v["version"])} · {_esc(v["version_kind"])} · {_esc(v["commit_message"])}</option>'
-        for v in vs
+    opts_from = "".join(
+        f'<option value="{v["id"]}"{" selected" if i == 0 else ""}>{_esc(v["version"])} · {_esc(v["version_kind"])} · {_esc(v["commit_message"])}</option>'
+        for i, v in enumerate(vs)
+    )
+    opts_to = "".join(
+        f'<option value="{v["id"]}"{" selected" if i == len(vs) - 1 else ""}>{_esc(v["version"])} · {_esc(v["version_kind"])} · {_esc(v["commit_message"])}</option>'
+        for i, v in enumerate(vs)
     )
     rows = "".join(
         f'<li><span class="tag">{_esc(v["version"])}</span> '
@@ -139,10 +143,10 @@ def frag_versions(article_id: int) -> str:
     )
     return f"""
     <div class="diff-controls">
-      <select id="from">{opts}</select>
+      <select id="from" name="from">{opts_from}</select>
       <span>对比</span>
-      <select id="to">{opts}</select>
-      <select id="diff-mode">
+      <select id="to" name="to">{opts_to}</select>
+      <select id="diff-mode" name="mode">
         <option value="inline">行内</option>
         <option value="split">并排</option>
         <option value="stats">统计</option>
