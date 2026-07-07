@@ -17,3 +17,6 @@ Thumbs.db
 *~
 .idea/
 .vscode/
+
+# ---- 本地状态快照（有意不入库，仅本地参考）----
+CONTEXT.md
