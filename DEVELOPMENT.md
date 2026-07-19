@@ -6,6 +6,7 @@
 > **注**: 原选型为 FastAPI，但当前 managed Python 环境无法安装第三方包（OpenSSL/网络限制导致 pip 安装中断），MVP 改用标准库 `http.server` 实现，路由与业务逻辑已与框架解耦，后续可平滑迁移回 FastAPI/uvicorn。
 > **创建**: 2026-07-07  
 > **更新**: 2026-07-07 — v1.3：监听三道闸门——稳定窗口由 5s 拉长至 30s（`_WATCH_DEBOUNCE`）、新增最小提交周期 180s（`_WATCH_MIN_INTERVAL`）、新增关闭编辑器即提交（`_WATCH_CLOSE_PROC` 默认 `Obsidian.exe`，进程由在→不在 强制 flush）；三变量均支持 `PADIF_WATCH_*` 环境变量覆盖；`_editor_present` 修复中文 Windows 下 `tasklist` GBK 解码崩溃；哲学明确：自动提交仅作便利，手动提交（带 message 回顾思路）才是主线
+> **文档权限**: 架构 / 编码约束 / API / 数据模型的权威源（技术事实唯一裁决）。详见 `DOCUMENTATION_GUIDE.md`。
 
 ---
 
@@ -213,6 +214,24 @@ sequenceDiagram
 
 - **实现健壮性**：`watcher.WatchRegistry.poll()` 对单个文件的 `read_text(utf-8)` 异常做 `continue`，单文件损坏不拖垮整个守护线程；`_editor_present` 对 `tasklist` 输出改用字节捕获 + `errors="replace"`（中文 Windows 默认 GBK/cp936），避免 subprocess 读取崩溃。
 
+### 4.4 前端差异展示（diff 渲染与样式）
+
+```mermaid
+flowchart LR
+    FD["frag_diff(mode)"] --> IN["行内: 每句独占一行"]
+    FD --> SP["并排: 左右双栏"]
+    FD --> ST["统计: 指标对比表"]
+```
+
+- **三种模式**（前端 `diff-mode` 下拉切换，由 `frag_diff(article_id, from_id, to_id, mode)` 服务端渲染；`mode ∈ inline / split / stats`）：
+  - **行内（inline）**：`.diff-body` 内每个句子级操作（equal / insert / delete / move / replace）是一个**直接子 `<span>`**；CSS 设为 `display:block`——**每句独占一行**，便于长文扫读。`replace` 块内部的字符级高亮（嵌套 `<span>`）仍是横排，故句内改动（如「行走→奔跑」）精确可见，不被块级化打断。
+  - **并排（split）**：`.diff-split` 左右双栏（左 from 删红、右 to 增绿），每栏 `.pane-body > span` 同样块级独占一行。
+  - **统计（stats）**：`.stat-table` 展示字数 / 句数 / 段数 / 行数的绝对值与变化量（增长绿 `s-up`、减少红 `s-down`）。
+- **颜色图例**：新增=绿、删除=红、移动（仅位置变化）=灰虚线、未变=浅灰。
+- **同版本守卫**：`frag_diff` 在 `from_id == to_id` 时返回「请选择两个不同的版本进行对比」，不渲染无意义 diff。
+
+> 注：4.4 的展示样式（含「每句独占一行」的块级规则）由 `web/index.html` 的 CSS 承载；改动样式**仅前端生效**，无需后端改动。
+
 ---
 
 ## 5. API 列表
@@ -333,5 +352,16 @@ PADIF_PORT=8000 python server/app.py     # 可用环境变量覆盖端口
 仓库位于 `padif/`，首个提交为 MVP 全量实现（commit `be90847`）。
 `.gitignore` 忽略 `__pycache__/`、`data/*.db` 等运行期产物，保留 `data/.gitkeep`。
 `CONTEXT.md` 为本地状态快照，**有意不入库**（见 `.gitignore`），仅作本地参考。
+
+---
+
+## 10. 待办（TODO）
+
+> 以下为**未实现**项，按本文件权限域（架构 / 编码约束 / API）归属；产品意图相关见 `GUIDE-PAdif.md`，状态进度见 `CONTEXT.md`。实现后须回填对应章节并升级版本记录（Section 0）。
+
+- [ ] **P4 / 前端优化 (T7)**: 样式打磨、响应式、无障碍、性能收尾——当前 V1 主线收尾阶段（详见 `GUIDE-PAdif.md` Phase 4）。
+- [ ] **P5 / Obsidian 插件形态**: 复用 `store` + `differ` + `version`，仅换 UI 层；**计划在 V2 产品迭代中落地**，非当前 V1 主线（详见 `GUIDE-PAdif.md` Phase 5）。
+- [ ] **多文章批量导入**: 当前 `/api/articles/import` 仅支持单 `.md` 文件导入。
+- [ ] **监听可视化反馈**: 监听面板当前仅展示路径列表；可补充「上次自动提交时间 / 待提交脏状态」等实时指示。
 
 > 本文档随模块演进而更新；任何架构/接口变更须同步修改对应 Mermaid 图与版本记录。

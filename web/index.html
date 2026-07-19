@@ -40,6 +40,8 @@
     .diff-body .rep { border-bottom:2px dashed #f0a500; }
     .diff-body .eq { color:#cfd3da; }
     .diff-body .mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
+    /* 句子级 diff：每句独占一行（直接子 span 成块级，rep 内字符级高亮仍横排） */
+    .diff-body > span, .diff-split .pane-body > span { display:block; padding:1px 0; }
     .diff-split .pane-body .mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
     .legend { font-size:12px; color:#888; margin:8px 0 4px; display:flex; gap:14px; flex-wrap:wrap; }
     .legend .sw { padding:0 6px; border-radius:3px; }

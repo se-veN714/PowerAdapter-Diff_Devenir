@@ -1,5 +1,6 @@
 # GUIDE-PAdif —— 轻量化文章版本监管与差异工具
 
+> **文档权限**: 产品需求与设计意图的权威源（技术事实以 `DEVELOPMENT.md` 为准，状态以 `CONTEXT.md` 为准）。详见 `DOCUMENTATION_GUIDE.md`。
 > PAdif = **P**aragraph / **A**rticle **Dif**f
 > 一个 git 式、但为「散文/长文」而非「代码」设计的版本控制小工具。
 > 当前阶段：先写网页应用，后续可迭代为 Obsidian 插件。
