@@ -10,110 +10,267 @@
   <script src="/web/app.js"></script>
   <script src="/web/diffview.js"></script>
   <style>
-    :root { color-scheme: dark; }
+    /* ===== Devenir 视觉语言（来自 themes/devenir/Project_context.md） ===== */
+    :root {
+      color-scheme: dark;
+      --bg-primary:    rgb(13, 16, 16);
+      --bg-secondary:  rgb(20, 24, 24);
+      --bg-elevated:   rgb(28, 35, 35);
+      --accent-primary: rgb(216, 255, 225);
+      --accent-soft:    rgb(143, 163, 148);
+      --accent-muted:   rgb(111, 129, 119);
+      --accent-deep:    rgb(62, 88, 72);
+      --text-primary:   rgb(235, 240, 235);
+      --text-secondary: rgb(170, 180, 170);
+      --text-tertiary:  rgb(95, 105, 100);
+      --scanline:          rgba(255, 255, 255, 0.03);
+      --fragment-border:   rgba(216, 255, 225, 0.08);
+      --fragment-highlight: rgba(216, 255, 225, 0.12);
+      --error-accent:   rgb(201, 120, 120);
+      --warning-accent: rgb(207, 181, 126);
+      --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+      --font-sans: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --ease-glitch: cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
+
     * { box-sizing: border-box; }
-    body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-           background:#0f1115; color:#e6e6e6; }
-    header { padding:14px 20px; border-bottom:1px solid #222; display:flex; align-items:baseline; gap:12px; }
-    header h1 { font-size:18px; margin:0; }
-    header .sub { color:#888; font-size:13px; }
-    .layout { display:grid; grid-template-columns: 280px 1fr; gap:0; min-height: calc(100vh - 53px); }
-    .col-left { border-right:1px solid #222; padding:16px; }
-    .col-right { padding:16px 22px; }
-    .muted { color:#888; font-size:13px; }
-    .tag { background:#26324a; color:#9ec5ff; border-radius:4px; padding:1px 6px; font-size:12px; }
-    ul.art-list, ul.ver-list { list-style:none; padding:0; margin:8px 0; }
-    ul.art-list li, ul.ver-list li { padding:6px 8px; border-radius:6px; }
-    ul.art-list li:hover { background:#1a1f29; }
-    ul.art-list a { color:#e6e6e6; text-decoration:none; display:flex; justify-content:space-between; gap:8px; }
-    .import-box { margin-bottom:18px; }
-    .import-box input { width:100%; padding:8px; background:#161a22; border:1px solid #2a2f3a;
-                       color:#e6e6e6; border-radius:6px; }
-    button { background:#2b6cff; color:#fff; border:0; padding:8px 14px; border-radius:6px; cursor:pointer; }
-    button:hover { background:#1f5bef; }
-    .diff-controls { display:flex; gap:10px; align-items:center; margin:14px 0; flex-wrap:wrap; }
-    select { background:#161a22; color:#e6e6e6; border:1px solid #2a2f3a; padding:6px; border-radius:6px; }
-    .stats { color:#9ec5ff; font-size:13px; margin:6px 0; }
-    .diff-view { margin-top:14px; line-height:1.9; font-size:15px; white-space:pre-wrap; }
-    .diff-body .ins { background:rgba(46,160,67,.32); color:#7ee2a8; border-radius:3px; font-weight:500; }
-    .diff-body .del { background:rgba(248,81,73,.28); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
-    .diff-body .rep { border-left:3px solid #f0a500; padding-left:8px; background:rgba(240,165,0,.08); border-radius:0 4px 4px 0; }
-    .diff-body .eq { color:#cfd3da; }
-    .diff-body .mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
+    html, body { margin: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    /* CRT 扫描线纹理层（复用 Devenir hero 的 scanline） */
+    .scanline-layer {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        repeating-linear-gradient(0deg, transparent 2px, var(--scanline) 2px, transparent 4px),
+        radial-gradient(circle at 50% -10%, rgba(216, 255, 225, 0.05), transparent 55%);
+    }
+
+    /* ===== 顶栏 ===== */
+    header {
+      position: relative; z-index: 1;
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 24px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--fragment-border);
+    }
+    .signal-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent-primary);
+      box-shadow: 0 0 10px var(--accent-primary);
+      animation: pulse 2.4s var(--ease-glitch) infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+    header h1 {
+      margin: 0; font-size: 20px; font-family: var(--font-mono); font-weight: 700;
+      color: var(--accent-primary);
+      text-shadow: 0 0 18px rgba(216, 255, 225, 0.25);
+      letter-spacing: .02em;
+    }
+    header .sub { color: var(--text-tertiary); font-size: 13px; font-family: var(--font-mono); }
+
+    /* ===== 布局 ===== */
+    .layout {
+      position: relative; z-index: 1;
+      display: grid; grid-template-columns: 300px 1fr;
+      min-height: calc(100vh - 61px);
+    }
+    .col-left {
+      border-right: 1px solid var(--fragment-border);
+      padding: 18px; background: var(--bg-primary);
+    }
+    .col-right { padding: 18px 24px; }
+
+    /* ===== 面板（fragment-border 卡片 + 悬停辉光） ===== */
+    .panel {
+      background: var(--bg-elevated);
+      border: 1px solid var(--fragment-border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      transition: border-color .2s var(--ease-glitch), box-shadow .2s var(--ease-glitch);
+    }
+    .panel:hover {
+      border-color: var(--fragment-highlight);
+      box-shadow: 0 0 0 1px var(--fragment-highlight), 0 10px 34px rgba(0, 0, 0, 0.4);
+    }
+    .panel-h {
+      font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--accent-soft); margin: 0 0 10px;
+    }
+    .muted { color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+    .hint { margin-top: 10px; font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
+    .hint b { color: var(--accent-soft); font-weight: 600; }
+
+    /* ===== 输入 / 按钮 ===== */
+    input[type=text] {
+      width: 100%; padding: 9px 11px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--fragment-border);
+      color: var(--text-primary);
+      border-radius: 7px;
+      font-family: var(--font-mono); font-size: 13px;
+    }
+    input[type=text]:focus {
+      outline: none; border-color: var(--accent-soft);
+      box-shadow: 0 0 0 3px rgba(143, 163, 148, 0.12);
+    }
+    select {
+      background: var(--bg-secondary); color: var(--text-primary);
+      border: 1px solid var(--fragment-border); border-radius: 7px;
+      padding: 7px 9px; font-family: var(--font-mono); font-size: 13px;
+    }
+    button {
+      font-family: var(--font-mono); font-size: 13px;
+      background: var(--accent-deep); color: var(--accent-primary);
+      border: 1px solid var(--fragment-border); border-radius: 7px;
+      padding: 8px 14px; cursor: pointer;
+      transition: background .18s var(--ease-glitch), box-shadow .18s var(--ease-glitch), color .18s var(--ease-glitch);
+    }
+    button:hover {
+      background: rgb(74, 104, 84);
+      box-shadow: 0 0 14px rgba(216, 255, 225, 0.18);
+    }
+    button.ghost { background: transparent; color: var(--text-secondary); }
+    button.ghost:hover { color: var(--accent-primary); border-color: var(--fragment-highlight); box-shadow: none; }
+    button.wstop {
+      font-size: 11px; padding: 3px 9px;
+      background: transparent; color: var(--error-accent); border-color: var(--fragment-border);
+    }
+    button.wstop:hover { border-color: var(--error-accent); box-shadow: none; background: rgba(201, 120, 120, 0.08); }
+    .row { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+
+    /* ===== 标签 / 列表 ===== */
+    .tag {
+      font-family: var(--font-mono); font-size: 11px;
+      background: var(--accent-deep); color: var(--accent-primary);
+      border-radius: 4px; padding: 1px 6px; white-space: nowrap;
+    }
+    ul.art-list, ul.ver-list { list-style: none; padding: 0; margin: 0; }
+    ul.art-list li, ul.ver-list li {
+      padding: 8px 10px; border-radius: 7px; margin: 2px 0;
+      border: 1px solid transparent; border-left: 2px solid transparent;
+      transition: background .15s var(--ease-glitch), border-color .15s var(--ease-glitch);
+    }
+    ul.art-list li:hover, ul.ver-list li:hover {
+      background: var(--bg-secondary);
+      border-color: var(--fragment-border);
+      border-left-color: var(--accent-soft);
+    }
+    ul.art-list a {
+      color: var(--text-primary); text-decoration: none;
+      display: flex; justify-content: space-between; gap: 8px; align-items: center;
+    }
+    .wpath { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); word-break: break-all; }
+
+    /* ===== 提交表单 ===== */
+    .commit-path {
+      background: var(--bg-secondary); border: 1px solid var(--fragment-border);
+      color: var(--accent-soft); border-radius: 7px;
+      padding: 7px 10px; font-family: var(--font-mono); font-size: 12px;
+      margin-bottom: 10px; word-break: break-all;
+    }
+
+    /* ===== 差异视图 ===== */
+    .diff-controls { display: flex; gap: 10px; align-items: center; margin: 14px 0; flex-wrap: wrap; }
+    .stats { color: var(--accent-soft); font-family: var(--font-mono); font-size: 13px; margin: 6px 0; }
+    .diff-view { margin-top: 14px; line-height: 1.9; font-size: 15px; white-space: pre-wrap; color: var(--text-primary); }
+    .diff-body .ins { background: rgba(86, 196, 124, 0.26); color: rgb(158, 232, 182); border-radius: 3px; }
+    .diff-body .del { background: rgba(201, 120, 120, 0.22); color: rgb(240, 170, 170); text-decoration: line-through; border-radius: 3px; }
+    .diff-body .rep { border-left: 3px solid var(--warning-accent); padding-left: 8px; background: rgba(207, 181, 126, 0.08); border-radius: 0 4px 4px 0; }
+    .diff-body .eq { color: var(--text-secondary); }
+    .diff-body .mv { border-bottom: 1px dotted var(--accent-muted); color: var(--text-secondary); }
     /* 句子级 diff：每句独占一行（直接子 span 成块级，rep 内字符级高亮仍横排） */
-    .diff-body > span, .diff-split .pane-body > span { display:block; padding:2px 0; }
-    .diff-split .pane-body .mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
-    .legend { font-size:12px; color:#888; margin:8px 0 4px; display:flex; gap:14px; flex-wrap:wrap; }
-    .legend .sw { padding:0 6px; border-radius:3px; }
-    .legend .sw-ins { background:rgba(46,160,67,.28); color:#7ee2a8; }
-    .legend .sw-del { background:rgba(248,81,73,.25); color:#ff9b94; }
-    .legend .sw-mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
-    .legend .sw-eq { color:#cfd3da; }
-    .diff-split { display:flex; gap:14px; margin-top:6px; }
-    .diff-split .pane { flex:1; min-width:0; border:1px solid #2a2f3a; border-radius:8px; background:#11151c; }
-    .diff-split .pane-h { padding:6px 10px; font-size:12px; color:#9ec5ff; border-bottom:1px solid #2a2f3a; }
-    .diff-split .pane-body { padding:10px 12px; line-height:1.9; font-size:15px; white-space:pre-wrap; max-height:62vh; overflow:auto; }
-    .diff-split .pane-body .ins { background:rgba(46,160,67,.34); color:#7ee2a8; border-radius:3px; font-weight:500; }
-    .diff-split .pane-body .del { background:rgba(248,81,73,.30); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
-    .diff-split .pane-body .rep { border-left:3px solid #f0a500; padding-left:8px; background:rgba(240,165,0,.08); border-radius:0 4px 4px 0; }
-    .diff-split .pane-body .eq { color:#cfd3da; }
-    .diff-split .pane-body .ph { color:#4a4f5a; user-select:none; font-size:13px; padding:0 2px; }
-    .stat-table { border-collapse:collapse; margin:12px 0; font-size:14px; }
-    .stat-table th, .stat-table td { border:1px solid #2a2f3a; padding:7px 16px; text-align:center; }
-    .stat-table th { background:#161a22; color:#9ec5ff; font-weight:600; }
-    .stat-table td:first-child { text-align:left; color:#cfd3da; }
-    .stat-table .s-delta.s-up { color:#7ee2a8; }
-    .stat-table .s-delta.s-down { color:#ff9b94; }
-    .stat-table .s-delta.s-eq { color:#888; }
-    .commit-form { margin-top:18px; border-top:1px solid #222; padding-top:14px; }
-    .commit-path { background:#161a22; border:1px solid #2a2f3a; color:#9ec5ff; border-radius:6px;
-                   padding:6px 10px; font-size:12px; margin-bottom:8px; word-break:break-all; }
-    .commit-form input[type=text] { width:100%; padding:8px; background:#161a22; border:1px solid #2a2f3a;
-                            color:#e6e6e6; border-radius:6px; margin:6px 0; }
-    .row { display:flex; gap:10px; align-items:center; margin:6px 0; }
+    .diff-body > span, .diff-split .pane-body > span { display: block; padding: 2px 0; }
+
+    .legend { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); margin: 8px 0 4px; display: flex; gap: 14px; flex-wrap: wrap; }
+    .legend .sw { padding: 0 6px; border-radius: 3px; }
+    .legend .sw-ins { background: rgba(86, 196, 124, 0.22); color: rgb(158, 232, 182); }
+    .legend .sw-del { background: rgba(201, 120, 120, 0.2); color: rgb(240, 170, 170); }
+    .legend .sw-mv { border-bottom: 1px dotted var(--accent-muted); color: var(--text-secondary); }
+    .legend .sw-eq { color: var(--text-secondary); }
+
+    .diff-split { display: flex; gap: 14px; margin-top: 8px; }
+    .diff-split .pane { flex: 1; min-width: 0; border: 1px solid var(--fragment-border); border-radius: 8px; background: var(--bg-secondary); overflow: hidden; }
+    .diff-split .pane-h { padding: 7px 11px; font-family: var(--font-mono); font-size: 12px; color: var(--accent-soft); border-bottom: 1px solid var(--fragment-border); background: var(--bg-elevated); }
+    .diff-split .pane-body { padding: 11px 13px; line-height: 1.9; font-size: 15px; white-space: pre-wrap; max-height: 62vh; overflow: auto; color: var(--text-primary); }
+    .diff-split .pane-body .ins { background: rgba(86, 196, 124, 0.28); color: rgb(158, 232, 182); border-radius: 3px; }
+    .diff-split .pane-body .del { background: rgba(201, 120, 120, 0.24); color: rgb(240, 170, 170); text-decoration: line-through; border-radius: 3px; }
+    .diff-split .pane-body .rep { border-left: 3px solid var(--warning-accent); padding-left: 8px; background: rgba(207, 181, 126, 0.08); border-radius: 0 4px 4px 0; }
+    .diff-split .pane-body .eq { color: var(--text-secondary); }
+    .diff-split .pane-body .ph { color: var(--text-tertiary); user-select: none; font-size: 13px; padding: 0 2px; }
+
+    .stat-table { border-collapse: collapse; margin: 12px 0; font-size: 14px; font-family: var(--font-mono); }
+    .stat-table th, .stat-table td { border: 1px solid var(--fragment-border); padding: 7px 16px; text-align: center; }
+    .stat-table th { background: var(--bg-elevated); color: var(--accent-soft); font-weight: 600; }
+    .stat-table td:first-child { text-align: left; color: var(--text-secondary); }
+    .stat-table .s-delta.s-up { color: rgb(158, 232, 182); }
+    .stat-table .s-delta.s-down { color: rgb(240, 170, 170); }
+    .stat-table .s-delta.s-eq { color: var(--text-tertiary); }
+
+    /* ===== 响应式 ===== */
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      .col-left { border-right: none; border-bottom: 1px solid var(--fragment-border); }
+    }
   </style>
 </head>
 <body>
+  <div class="scanline-layer"></div>
+
   <header>
+    <span class="signal-dot" aria-hidden="true"></span>
     <h1>PAdif</h1>
     <span class="sub">轻量化文章版本监管 · 句子级差异</span>
   </header>
 
   <div class="layout">
     <div class="col-left">
-      <div class="import-box">
-        <label class="muted">导入 Markdown 文件</label>
+      <section class="panel">
+        <h3 class="panel-h">导入 · 新建文章</h3>
+        <p class="muted">把本地 .md 作为新文章建档（生成首版快照）。</p>
         <input id="md-path" type="text" placeholder="例如 D:/notes/essay.md" />
         <div class="row" style="margin-top:8px;">
           <button onclick="importMd()">导入</button>
         </div>
-      </div>
-      <div class="import-box" style="margin-top:18px;border-top:1px solid #222;padding-top:14px;">
-        <label class="muted">监听文件（写完自动提交）</label>
+      </section>
+
+      <section class="panel">
+        <h3 class="panel-h">监听 · 自动建档</h3>
         <input id="watch-path" type="text" placeholder="例如 D:/notes/essay.md" />
         <div class="row" style="margin-top:8px;">
           <button onclick="watchMd()">开始监听</button>
-          <button onclick="loadWatch()" style="background:#3a3f4a;">刷新</button>
+          <button class="ghost" onclick="loadWatch()">刷新</button>
         </div>
-        <div id="watch-list" style="margin-top:8px;"></div>
-        <p class="muted" style="margin-top:8px;line-height:1.55;font-size:12px;">
+        <div id="watch-list"></div>
+        <p class="hint">
           自动提交仅为便利：文件稳定后、或关闭编辑器（Obsidian）时自动落版。<br/>
           建议<b>手动提交并附言</b>，以回顾思路——自动提交不记录你的思考。
         </p>
-      </div>
-      <h3 style="font-size:14px;color:#aaa;">文章</h3>
-      <div id="articles"></div>
+      </section>
+
+      <section class="panel">
+        <h3 class="panel-h">文章</h3>
+        <div id="articles"></div>
+      </section>
     </div>
 
     <div class="col-right">
-      <h3 style="font-size:14px;color:#aaa;">版本与差异</h3>
-      <div id="versions"><p class="muted">从左侧选择一篇文章。</p></div>
+      <section class="panel">
+        <h3 class="panel-h">版本与差异</h3>
+        <div id="versions"><p class="muted">从左侧选择一篇文章。</p></div>
+      </section>
 
-      <div class="commit-form" id="commit-form" style="display:none;">
-        <h3 style="font-size:14px;color:#aaa;">提交新版本（从你的 md 文件读取）</h3>
-        <p class="muted" style="margin:4px 0 8px;line-height:1.55;font-size:12px;">
-          提交时直接从你编辑器里的 md 文件<b>读取最新内容</b>，无需在此粘贴。<br/>
-          提交前请先在编辑器中<b>保存（Ctrl/⌘+S）</b>——提交的是磁盘上的文件，不是页面里的任何文本。
+      <section class="panel commit-form" id="commit-form" style="display:none;">
+        <h3 class="panel-h">提交新版本 · 从磁盘读取</h3>
+        <p class="muted" style="margin:4px 0 10px;">
+          提交时直接从你编辑器里的 md 文件<b style="color:var(--accent-soft)">读取最新内容</b>，无需在此粘贴。<br/>
+          提交前请先在编辑器中<b style="color:var(--accent-soft)">保存（Ctrl/⌘+S）</b>——提交的是磁盘上的文件，不是页面里的任何文本。
         </p>
         <div id="commit-path" class="commit-path">未关联文件</div>
         <input id="commit-msg" type="text" placeholder="commit message（必填，说明这次改了什么）" />
@@ -126,7 +283,7 @@
           </select>
           <button id="commit-btn" onclick="commitVersion()">提交版本</button>
         </div>
-      </div>
+      </section>
     </div>
   </div>
 </body>
