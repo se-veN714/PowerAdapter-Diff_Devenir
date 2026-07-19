@@ -37,6 +37,8 @@ async function selectArticle(aid) {
   const path = articlePaths[aid] || "";
   document.getElementById("commit-path").textContent = path ? "文件：" + path : "未关联文件（无法从磁盘读取）";
   document.getElementById("commit-form").style.display = "block";
+  // 版本添加面板：把另一个本地文件追加为本文章的新版本
+  document.getElementById("add-version-form").style.display = "block";
 }
 
 async function commitVersion() {
@@ -64,6 +66,36 @@ async function commitVersion() {
   box.innerHTML = await r2.text();
   if (window.htmx && htmx.process) htmx.process(box);
   document.getElementById("commit-msg").value = "";
+}
+
+// ---------- 版本添加：把另一个本地 md 文件追加为本文章的新版本 ----------
+async function addVersion() {
+  if (!currentAid) return;
+  const path = document.getElementById("add-version-path").value.trim();
+  if (!path) { alert("请填写要添加的本地 .md 文件路径"); return; }
+  const message = document.getElementById("add-version-msg").value.trim();
+  const kind = document.getElementById("add-version-kind").value;
+  if (!message) { alert("commit message 不能为空"); return; }
+  // 提交前提醒：PAdif 读的是磁盘文件，必须确保该文件已在编辑器里保存
+  if (!confirm("将从磁盘读取该文件并提交为本文章的新版本：\n" + path +
+               "\n\n请确认你已在编辑器中保存（Ctrl/⌘+S）。确定继续？")) return;
+  const res = await fetch(`/api/articles/${currentAid}/versions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, commit_message: message, version_kind: kind }),
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  if (data.gentle_warn) {
+    if (!confirm("提示：这一版与上一版似乎只有标点/空格差异，仍要提交吗？")) return;
+  }
+  // 刷新版本列表与 diff 控件，并重新绑定 htmx
+  const r2 = await fetch(`/frag/articles/${currentAid}/versions`);
+  const box = document.getElementById("versions");
+  box.innerHTML = await r2.text();
+  if (window.htmx && htmx.process) htmx.process(box);
+  document.getElementById("add-version-path").value = "";
+  document.getElementById("add-version-msg").value = "";
 }
 
 // ---------- 文件监听（Phase 3） ----------

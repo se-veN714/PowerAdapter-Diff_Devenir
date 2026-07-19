@@ -284,6 +284,25 @@
           <button id="commit-btn" onclick="commitVersion()">提交版本</button>
         </div>
       </section>
+
+      <section class="panel add-version-form" id="add-version-form" style="display:none;">
+        <h3 class="panel-h">添加版本 · 从本地文件</h3>
+        <p class="muted" style="margin:4px 0 10px;">
+          把<b style="color:var(--accent-soft)">另一个</b>本地 .md 文件作为本文章的新版本追加——
+          适用于你本地留了多份版本、想一并纳入对比的场景。
+        </p>
+        <input id="add-version-path" type="text" placeholder="例如 D:/notes/essay-draft-v2.md" />
+        <input id="add-version-msg" type="text" placeholder="commit message（必填，说明这版来源/改动）" style="margin-top:8px;" />
+        <div class="row">
+          <label class="muted">级别</label>
+          <select id="add-version-kind">
+            <option value="patch">patch · 措辞润色</option>
+            <option value="minor">minor · 成段增删</option>
+            <option value="major">major · 结构大改</option>
+          </select>
+          <button id="add-version-btn" onclick="addVersion()">添加版本</button>
+        </div>
+      </section>
     </div>
   </div>
 </body>
