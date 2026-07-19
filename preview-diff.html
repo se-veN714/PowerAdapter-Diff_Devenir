@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>PAdif diff 预览</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+           background:#0f1115; color:#e6e6e6; padding:20px; }
+    h2 { font-size:16px; color:#9ec5ff; margin:24px 0 10px; }
+    .stats { color:#9ec5ff; font-size:13px; margin:6px 0; }
+    .diff-view { margin-top:14px; line-height:1.9; font-size:15px; white-space:pre-wrap; }
+    .diff-body .ins { background:rgba(46,160,67,.32); color:#7ee2a8; border-radius:3px; font-weight:500; }
+    .diff-body .del { background:rgba(248,81,73,.28); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
+    .diff-body .rep { border-left:3px solid #f0a500; padding-left:8px; background:rgba(240,165,0,.08); border-radius:0 4px 4px 0; }
+    .diff-body .eq { color:#cfd3da; }
+    .diff-body .mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
+    .diff-body > span, .diff-split .pane-body > span { display:block; padding:2px 0; }
+    .diff-split { display:flex; gap:14px; margin-top:6px; }
+    .diff-split .pane { flex:1; min-width:0; border:1px solid #2a2f3a; border-radius:8px; background:#11151c; }
+    .diff-split .pane-h { padding:6px 10px; font-size:12px; color:#9ec5ff; border-bottom:1px solid #2a2f3a; }
+    .diff-split .pane-body { padding:10px 12px; line-height:1.9; font-size:15px; white-space:pre-wrap; max-height:62vh; overflow:auto; }
+    .diff-split .pane-body .ins { background:rgba(46,160,67,.34); color:#7ee2a8; border-radius:3px; font-weight:500; }
+    .diff-split .pane-body .del { background:rgba(248,81,73,.30); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
+    .diff-split .pane-body .rep { border-left:3px solid #f0a500; padding-left:8px; background:rgba(240,165,0,.08); border-radius:0 4px 4px 0; }
+    .diff-split .pane-body .eq { color:#cfd3da; }
+    .diff-split .pane-body .mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
+    .diff-split .pane-body .ph { color:#4a4f5a; user-select:none; font-size:13px; padding:0 2px; }
+  </style>
+</head>
+<body>
+  <h2>并排（split）视图：v1.1.0 vs v2.1.0</h2>
+  <p class="stats">句+0 / 句-0 / 字+5 / 字-3</p>
+  <div class="diff-split">
+    <div class="pane pane-l">
+      <div class="pane-h">v1.1.0（左）</div>
+      <div class="pane-body">
+        <span class="eq"># 我的写作工具流</span>
+        <span class="eq">我平时用 Markdown 写初稿。</span>
+        <span class="rep"><span class="eq">它足够</span><span class="del">轻量</span><span class="ph" title="to 版新增">…</span><span class="eq">，打开就能写。</span></span>
+        <span class="eq">写作时我不太在意格式。</span>
+        <span class="eq">先把想法写下来最重要。</span>
+        <span class="mv" title="该句在另一版本中存在，仅位置移动">最近我加了一个习惯：每天固定写半小时。</span>
+        <span class="mv" title="该句在另一版本中存在，仅位置移动">坚持比灵感更重要。</span>
+        <span class="mv" title="该句在另一版本中存在，仅位置移动">常用的编辑器是 Obsidian。</span>
+        <span class="mv" title="该句在另一版本中存在，仅位置移动">它的双链和本地存储很合我胃口。</span>
+        <span class="eq">我整理了几条原则：
+- 先完成，再完美。</span>
+        <span class="eq">- 版本要留痕，方便回看思路。</span>
+        <span class="rep"><span class="eq">- 工具服务于表达，</span><span class="del">不</span><span class="ph" title="to 版新增">…</span><span class="eq">被工具绑架。</span></span>
+      </div>
+    </div>
+    <div class="pane pane-r">
+      <div class="pane-h">v2.1.0（右）</div>
+      <div class="pane-body">
+        <span class="eq"># 我的写作工具流</span>
+        <span class="eq">我平时用 Markdown 写初稿。</span>
+        <span class="rep"><span class="eq">它足够</span><span class="ph" title="from 版删除">…</span><span class="ins">简单直接</span><span class="eq">，打开就能写。</span></span>
+        <span class="eq">写作时我不太在意格式。</span>
+        <span class="eq">先把想法写下来最重要。</span>
+        <span class="mv" title="该句在另一版本中存在，仅位置移动">最近我加了一个习惯：每天固定写半小时。</span>
+        <span class="mv" title="该句在另一版本中存在，仅位置移动">坚持比灵感更重要。</span>
+        <span class="mv" title="该句在另一版本中存在，仅位置移动">常用的编辑器是 Obsidian。</span>
+        <span class="mv" title="该句在另一版本中存在，仅位置移动">它的双链和本地存储很合我胃口。</span>
+        <span class="eq">我整理了几条原则：
+- 先完成，再完美。</span>
+        <span class="eq">- 版本要留痕，方便回看思路。</span>
+        <span class="rep"><span class="eq">- 工具服务于表达，</span><span class="ph" title="from 版删除">…</span><span class="ins">别</span><span class="eq">被工具绑架。</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2>行内（inline）视图</h2>
+  <p class="stats">句+0 / 句-0 / 字+5 / 字-3</p>
+  <div class="diff-body">
+    <span class="eq"># 我的写作工具流</span>
+    <span class="eq">我平时用 Markdown 写初稿。</span>
+    <span class="rep"><span class="eq">它足够</span><span class="del">轻量</span><span class="ins">简单直接</span><span class="eq">，打开就能写。</span></span>
+    <span class="eq">写作时我不太在意格式。</span>
+    <span class="eq">先把想法写下来最重要。</span>
+    <span class="mv" title="该句在另一版本中存在，仅位置移动">最近我加了一个习惯：每天固定写半小时。</span>
+    <span class="mv" title="该句在另一版本中存在，仅位置移动">坚持比灵感更重要。</span>
+    <span class="mv" title="该句在另一版本中存在，仅位置移动">常用的编辑器是 Obsidian。</span>
+    <span class="mv" title="该句在另一版本中存在，仅位置移动">它的双链和本地存储很合我胃口。</span>
+    <span class="eq">我整理了几条原则：
+- 先完成，再完美。</span>
+    <span class="eq">- 版本要留痕，方便回看思路。</span>
+    <span class="rep"><span class="eq">- 工具服务于表达，</span><span class="del">不</span><span class="ins">别</span><span class="eq">被工具绑架。</span></span>
+  </div>
+</body>
+</html>

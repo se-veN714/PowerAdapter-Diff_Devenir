@@ -66,8 +66,8 @@
     .stat-table .s-delta.s-down { color:#ff9b94; }
     .stat-table .s-delta.s-eq { color:#888; }
     .commit-form { margin-top:18px; border-top:1px solid #222; padding-top:14px; }
-    .commit-form textarea { width:100%; min-height:160px; background:#161a22; border:1px solid #2a2f3a;
-                            color:#e6e6e6; border-radius:6px; padding:10px; font-family:inherit; }
+    .commit-path { background:#161a22; border:1px solid #2a2f3a; color:#9ec5ff; border-radius:6px;
+                   padding:6px 10px; font-size:12px; margin-bottom:8px; word-break:break-all; }
     .commit-form input[type=text] { width:100%; padding:8px; background:#161a22; border:1px solid #2a2f3a;
                             color:#e6e6e6; border-radius:6px; margin:6px 0; }
     .row { display:flex; gap:10px; align-items:center; margin:6px 0; }
@@ -110,8 +110,12 @@
       <div id="versions"><p class="muted">从左侧选择一篇文章。</p></div>
 
       <div class="commit-form" id="commit-form" style="display:none;">
-        <h3 style="font-size:14px;color:#aaa;">提交新版本</h3>
-        <textarea id="new-content" placeholder="粘贴/编辑文章全文…"></textarea>
+        <h3 style="font-size:14px;color:#aaa;">提交新版本（从你的 md 文件读取）</h3>
+        <p class="muted" style="margin:4px 0 8px;line-height:1.55;font-size:12px;">
+          提交时直接从你编辑器里的 md 文件<b>读取最新内容</b>，无需在此粘贴。<br/>
+          提交前请先在编辑器中<b>保存（Ctrl/⌘+S）</b>——提交的是磁盘上的文件，不是页面里的任何文本。
+        </p>
+        <div id="commit-path" class="commit-path">未关联文件</div>
         <input id="commit-msg" type="text" placeholder="commit message（必填，说明这次改了什么）" />
         <div class="row">
           <label class="muted">级别</label>

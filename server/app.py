@@ -55,7 +55,8 @@ def auto_commit(resolved_path: str, content: str) -> dict:
     if latest:
         prev_content = latest["content"]
         kind = "patch"
-        message = "自动保存（文件稳定后）"
+        # 自动提交不推荐、仅作便利：message 带时间戳，使版本列表里每次自动落版可区分
+        message = "自动保存（文件稳定后）· " + time.strftime("%m-%d %H:%M")
     else:
         prev_content = ""
         kind = "major"
@@ -210,7 +211,26 @@ def import_markdown(path: str) -> dict:
 
 
 def commit_version(article_id: int, payload: dict) -> dict:
-    content = payload.get("content", "")
+    """手动提交一个版本。
+
+    与监听动作联动：创作者在他自己的 md 编辑器里写作，PAdif 只负责「读文件 + 留版」。
+    因此**优先从磁盘读取**文章文件（payload["path"]），而非接收前端粘贴的 content——
+    前端不再承担「粘贴新文章」的职责，避免双重来源不一致。
+    若未提供 path，则回退到 content（兼容旧调用 / 测试）。
+    """
+    path = payload.get("path")
+    if path:
+        p = Path(path)
+        if not p.exists():
+            raise FileNotFoundError(f"文件不存在，无法提交：{path}")
+        try:
+            content = p.read_text(encoding="utf-8")
+        except Exception as e:
+            raise ValueError(f"读取文件失败（请确认已在编辑器中保存）：{e}")
+    else:
+        content = payload.get("content", "")
+    if not content.strip():
+        raise ValueError("文章内容为空，未读取到任何内容（请确认文件已保存）")
     message = (payload.get("commit_message") or "").strip()
     if not message:
         raise ValueError("commit_message 不能为空")
@@ -456,6 +476,20 @@ class Handler(BaseHTTPRequestHandler):
                 return _send_json(self, {"error": "path 必填"}, 400)
             try:
                 added = WATCHER.register(p)
+                # 监听即建档：确保文章与初始快照存在，使「监听」与「手动提交」立刻联动——
+                # 创作者开始监听后，随时可在页面里手动提交当前文件状态，不必等自动落版。
+                # 文件尚不存在时跳过建档，待文件出现后由监听自动落初始版。
+                rp = str(Path(p).resolve())
+                aid = store.save_article(rp, Path(p).stem)
+                if not store.get_latest_version(aid) and Path(p).exists():
+                    content = Path(p).read_text(encoding="utf-8")
+                    ver = version.bump(None, "major")
+                    store.save_version(
+                        aid, content, "开始监听（初始快照）", ver, "major",
+                        build_stats("", content),
+                    )
+            except FileNotFoundError as e:
+                return _send_json(self, {"error": str(e)}, 400)
             except Exception as e:
                 return _send_json(self, {"error": str(e)}, 400)
             return _send_json(self, {"ok": True, "added": added, "watched": WATCHER.list()})

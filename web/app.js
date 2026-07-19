@@ -3,10 +3,14 @@
    必须显式调用 htmx.process(node) 才能让片段内的 hx-* 生效（如「查看差异」按钮）。 */
 
 let currentAid = null;
+let articlePaths = {};   // aid -> 磁盘文件路径（与监听联动，提交时从磁盘读取）
 
 async function loadArticles() {
-  const res = await fetch("/frag/articles");
-  document.getElementById("articles").innerHTML = await res.text();
+  const res = await fetch("/api/articles");
+  const arts = await res.json();
+  articlePaths = {};
+  for (const a of arts) articlePaths[a.id] = a.path;
+  document.getElementById("articles").innerHTML = await (await fetch("/frag/articles")).text();
 }
 
 async function importMd() {
@@ -29,19 +33,25 @@ async function selectArticle(aid) {
   box.innerHTML = await res.text();
   // 让新注入片段里的 hx-*（查看差异按钮）被 htmx 绑定
   if (window.htmx && htmx.process) htmx.process(box);
+  // 联动：把关联文件的磁盘路径显示到提交表单（提交时从磁盘读取）
+  const path = articlePaths[aid] || "";
+  document.getElementById("commit-path").textContent = path ? "文件：" + path : "未关联文件（无法从磁盘读取）";
   document.getElementById("commit-form").style.display = "block";
 }
 
 async function commitVersion() {
   if (!currentAid) return;
-  const content = document.getElementById("new-content").value;
+  const path = articlePaths[currentAid];
+  if (!path) { alert("该文章未关联文件，无法从磁盘读取内容（请先通过「监听文件」建档）。"); return; }
   const message = document.getElementById("commit-msg").value.trim();
   const kind = document.getElementById("commit-kind").value;
   if (!message) { alert("commit message 不能为空"); return; }
+  // 提交前提醒：PAdif 读的是磁盘文件，必须确保创作者已在编辑器里保存
+  if (!confirm("提交前提醒：请确认你已在编辑器中保存（Ctrl/⌘+S）。\n将读取磁盘文件最新内容并提交。确定继续？")) return;
   const res = await fetch(`/api/articles/${currentAid}/versions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, commit_message: message, version_kind: kind }),
+    body: JSON.stringify({ path, commit_message: message, version_kind: kind }),
   });
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
@@ -53,7 +63,6 @@ async function commitVersion() {
   const box = document.getElementById("versions");
   box.innerHTML = await r2.text();
   if (window.htmx && htmx.process) htmx.process(box);
-  document.getElementById("new-content").value = "";
   document.getElementById("commit-msg").value = "";
 }
 
@@ -69,6 +78,7 @@ async function watchMd() {
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
   await loadWatch();
+  await loadArticles();   // 监听即建档：刷新文章列表，使新文章可立即手动提交
 }
 
 async function loadWatch() {
