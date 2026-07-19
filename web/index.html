@@ -35,13 +35,13 @@
     select { background:#161a22; color:#e6e6e6; border:1px solid #2a2f3a; padding:6px; border-radius:6px; }
     .stats { color:#9ec5ff; font-size:13px; margin:6px 0; }
     .diff-view { margin-top:14px; line-height:1.9; font-size:15px; white-space:pre-wrap; }
-    .diff-body .ins { background:rgba(46,160,67,.28); color:#7ee2a8; border-radius:3px; }
-    .diff-body .del { background:rgba(248,81,73,.25); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
-    .diff-body .rep { border-bottom:2px dashed #f0a500; }
+    .diff-body .ins { background:rgba(46,160,67,.32); color:#7ee2a8; border-radius:3px; font-weight:500; }
+    .diff-body .del { background:rgba(248,81,73,.28); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
+    .diff-body .rep { border-left:3px solid #f0a500; padding-left:8px; background:rgba(240,165,0,.08); border-radius:0 4px 4px 0; }
     .diff-body .eq { color:#cfd3da; }
     .diff-body .mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
     /* 句子级 diff：每句独占一行（直接子 span 成块级，rep 内字符级高亮仍横排） */
-    .diff-body > span, .diff-split .pane-body > span { display:block; padding:1px 0; }
+    .diff-body > span, .diff-split .pane-body > span { display:block; padding:2px 0; }
     .diff-split .pane-body .mv { border-bottom:1px dotted #6b7280; color:#b9c0cc; }
     .legend { font-size:12px; color:#888; margin:8px 0 4px; display:flex; gap:14px; flex-wrap:wrap; }
     .legend .sw { padding:0 6px; border-radius:3px; }
@@ -53,11 +53,11 @@
     .diff-split .pane { flex:1; min-width:0; border:1px solid #2a2f3a; border-radius:8px; background:#11151c; }
     .diff-split .pane-h { padding:6px 10px; font-size:12px; color:#9ec5ff; border-bottom:1px solid #2a2f3a; }
     .diff-split .pane-body { padding:10px 12px; line-height:1.9; font-size:15px; white-space:pre-wrap; max-height:62vh; overflow:auto; }
-    .diff-split .pane-body .ins { background:rgba(46,160,67,.30); color:#7ee2a8; border-radius:3px; }
-    .diff-split .pane-body .del { background:rgba(248,81,73,.28); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
-    .diff-split .pane-body .rep { border-bottom:1px dotted #f0a500; }
+    .diff-split .pane-body .ins { background:rgba(46,160,67,.34); color:#7ee2a8; border-radius:3px; font-weight:500; }
+    .diff-split .pane-body .del { background:rgba(248,81,73,.30); color:#ff9b94; text-decoration:line-through; border-radius:3px; }
+    .diff-split .pane-body .rep { border-left:3px solid #f0a500; padding-left:8px; background:rgba(240,165,0,.08); border-radius:0 4px 4px 0; }
     .diff-split .pane-body .eq { color:#cfd3da; }
-    .diff-split .ph { color:#4a4f5a; user-select:none; }
+    .diff-split .pane-body .ph { color:#4a4f5a; user-select:none; font-size:13px; padding:0 2px; }
     .stat-table { border-collapse:collapse; margin:12px 0; font-size:14px; }
     .stat-table th, .stat-table td { border:1px solid #2a2f3a; padding:7px 16px; text-align:center; }
     .stat-table th { background:#161a22; color:#9ec5ff; font-weight:600; }

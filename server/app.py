@@ -324,11 +324,16 @@ def frag_diff(article_id: int, from_id: str, to_id: str, mode: str = "inline") -
 
 
 def _render_split(ops, ver_a: str, ver_b: str) -> str:
-    """并排双栏：左栏为 from 版（删除标红、新增留空），右栏为 to 版（新增标绿、删除留空）。"""
+    """并排双栏：左栏为 from 版（删除标红、新增留空），右栏为 to 版（新增标绿、删除留空）。
+
+    对 replace 句内差异：左栏只渲染 from 侧内容（eq + delete），右栏只渲染 to 侧内容
+    （eq + insert），避免把对方的字用灰色混进来导致「左右看起来一样」的歧义。
+    """
     left, right = [], []
     for o in ops:
         if o.op == "equal":
-            left.append(_esc(o.text)); right.append(_esc(o.text))
+            t = f'<span class="eq">{_esc(o.text)}</span>'
+            left.append(t); right.append(t)
         elif o.op == "delete":
             left.append(f'<span class="del">{_esc(o.text)}</span>')
             right.append('<span class="ph">　</span>')
@@ -336,15 +341,19 @@ def _render_split(ops, ver_a: str, ver_b: str) -> str:
             left.append('<span class="ph">　</span>')
             right.append(f'<span class="ins">{_esc(o.text)}</span>')
         elif o.op == "moved":
-            left.append(f'<span class="mv" title="该句在另一版本中存在，仅位置移动">{_esc(o.text)}</span>')
-            right.append(f'<span class="mv" title="该句在另一版本中存在，仅位置移动">{_esc(o.text)}</span>')
+            t = f'<span class="mv" title="该句在另一版本中存在，仅位置移动">{_esc(o.text)}</span>'
+            left.append(t); right.append(t)
         elif o.op == "replace":
             linner = "".join(
-                f'<span class="{"del" if x.op=="delete" else "eq"}">{_esc(x.text)}</span>'
+                f'<span class="del">{_esc(x.text)}</span>' if x.op == "delete"
+                else f'<span class="eq">{_esc(x.text)}</span>' if x.op == "equal"
+                else '<span class="ph" title="to 版新增">…</span>'
                 for x in o.inner
             )
             rinner = "".join(
-                f'<span class="{"ins" if x.op=="insert" else "eq"}">{_esc(x.text)}</span>'
+                f'<span class="ins">{_esc(x.text)}</span>' if x.op == "insert"
+                else f'<span class="eq">{_esc(x.text)}</span>' if x.op == "equal"
+                else '<span class="ph" title="from 版删除">…</span>'
                 for x in o.inner
             )
             left.append(f'<span class="rep">{linner}</span>')

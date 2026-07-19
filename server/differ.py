@@ -195,17 +195,24 @@ def diff_sentences(a: str, b: str) -> List[DiffOp]:
     return ops
 
 
-def build_stats(a: str, b: str) -> dict:
-    """统计两版间的增删规模，供版本记录与统计摘要使用。
+def _leaf_ops(op: DiffOp) -> List[DiffOp]:
+    """展开 replace 的 inner，返回叶子级操作（equal/insert/delete）。"""
+    if op.op == "replace" and op.inner:
+        return op.inner
+    return [op]
 
-    基于移动感知的 diff：moved 不计入增删（重排不再虚增句数变化）。
+
+def build_stats(a: str, b: str) -> dict:
+    """统计两版间的实际增删规模，供版本记录与统计摘要使用。
+
+    基于移动感知的 diff：moved 不计入增删（重排不再虚增句数变化）；
+    replace 按句内字符级差异分别计入字增/字删。
     """
-    sa, sb = segment(a), segment(b)
-    chars_added = sum(len(s) for s in sb)
-    chars_removed = sum(len(s) for s in sa)
     ops = diff_sentences(a, b)
     sentences_added = sum(1 for o in ops if o.op == "insert")
     sentences_removed = sum(1 for o in ops if o.op == "delete")
+    chars_added = sum(len(x.text) for o in ops for x in _leaf_ops(o) if x.op == "insert")
+    chars_removed = sum(len(x.text) for o in ops for x in _leaf_ops(o) if x.op == "delete")
     return {
         "chars_added": chars_added,
         "chars_removed": chars_removed,
